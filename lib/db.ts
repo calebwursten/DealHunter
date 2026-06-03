@@ -1,7 +1,6 @@
-import { neon, NeonQueryFunction } from "@neondatabase/serverless";
+import { neon } from "@neondatabase/serverless";
 
-// Lazily initialised — null when DATABASE_URL is not configured
-let _sql: NeonQueryFunction<false, false> | null = null;
+let _sql: ReturnType<typeof neon> | null = null;
 let _ready = false;
 
 function getSql() {
@@ -31,29 +30,26 @@ export interface CachedCoord {
   lng: number;
 }
 
-/** Batch-fetch coordinates for all supplied parids. Returns a map parid→coord. */
 export async function getCachedCoords(
   parids: string[]
 ): Promise<Record<string, CachedCoord>> {
   const sql = getSql();
   if (!sql || parids.length === 0) return {};
   await ensureTable();
-  const rows = await sql<CachedCoord>`
+  const rows = (await sql`
     SELECT parid, lat, lng
     FROM   geocode_cache
     WHERE  parid = ANY(${parids})
-  `;
+  `) as unknown as CachedCoord[];
   return Object.fromEntries(rows.map((r) => [r.parid, r]));
 }
 
-/** Upsert a batch of geocoded results. */
 export async function storeCachedCoords(
   entries: { parid: string; lat: number; lng: number; address?: string }[]
 ) {
   const sql = getSql();
   if (!sql || entries.length === 0) return;
   await ensureTable();
-  // Upsert one row at a time — batches are small (≤24) so this is fine
   for (const e of entries) {
     await sql`
       INSERT INTO geocode_cache (parid, lat, lng, address)
