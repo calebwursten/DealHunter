@@ -39,7 +39,7 @@ export default function PropertySearch() {
     if (!q.trim()) return;
     setError("");
     setSearched(true);
-    const limit = currentView === "map" ? 100 : 24;
+    const limit = 100;
     startTransition(async () => {
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`);
