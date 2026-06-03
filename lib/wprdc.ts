@@ -1,7 +1,6 @@
 import { Property } from "./types";
 
 const CKAN_BASE = "https://data.wprdc.org/api/3/action";
-// "Property Assessments Parcel Data (API version)" — confirmed working resource
 export const ASSESSMENT_RESOURCE_ID = "65855e14-549e-4992-b5be-d629afc676fa";
 
 export interface WPRDCRecord {
@@ -45,6 +44,7 @@ export interface WPRDCRecord {
   CHANGENOTICEADDRESS1: string | null;
   CHANGENOTICEADDRESS2: string | null;
   CHANGENOTICEADDRESS3: string | null;
+  CHANGENOTICEADDRESS4: string | null;
   TAXYEAR: number | null;
 }
 
@@ -85,6 +85,17 @@ function generateTags(rec: WPRDCRecord, equityPct: number): string[] {
   return tags.slice(0, 3);
 }
 
+// Parse "PITTSBURGH PA  " → { city: "Pittsburgh", state: "PA" }
+function parseCityState(raw: string | null): { city: string; state: string } {
+  if (!raw) return { city: "", state: "" };
+  const parts = raw.trim().split(/\s+/);
+  const state = parts.length >= 2 ? parts[parts.length - 1] : "";
+  const city = parts.slice(0, -1).map(w =>
+    w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  ).join(" ");
+  return { city, state };
+}
+
 export function wprdcToProperty(rec: WPRDCRecord): Property {
   const fairMarket = rec.FAIRMARKETTOTAL ?? 0;
   const lastSale = rec.SALEPRICE ?? 0;
@@ -96,6 +107,8 @@ export function wprdcToProperty(rec: WPRDCRecord): Property {
 
   const address = [rec.PROPERTYHOUSENUM, rec.PROPERTYFRACTION?.trim(), rec.PROPERTYADDRESS]
     .filter(Boolean).join(" ").trim();
+
+  const { city: mailCity, state: mailState } = parseCityState(rec.CHANGENOTICEADDRESS3);
 
   return {
     id: rec.PARID,
@@ -114,9 +127,22 @@ export function wprdcToProperty(rec: WPRDCRecord): Property {
     equityPercent: equityPct,
     ownerName,
     ownerType: mapOwnerType(rec.OWNERDESC ?? ""),
+    ownerMailingLine1: (rec.CHANGENOTICEADDRESS1 ?? "").trim() || undefined,
+    ownerMailingLine2: (rec.CHANGENOTICEADDRESS2 ?? "").trim() || undefined,
+    ownerMailingCity: mailCity || undefined,
+    ownerMailingState: mailState || undefined,
+    ownerMailingZip: (rec.CHANGENOTICEADDRESS4 ?? "").trim() || undefined,
+    isHomestead: rec.HOMESTEADFLAG === "HOM",
+    neighborhood: rec.NEIGHDESC ?? undefined,
     lastSaleDate: rec.SALEDATE ?? "Unknown",
     lastSalePrice: fmt(lastSale),
+    prevSaleDate: rec.PREVSALEDATE ?? undefined,
+    prevSalePrice: rec.PREVSALEPRICE ? fmt(rec.PREVSALEPRICE) : undefined,
     openMortgage: "N/A",
+    lotArea: rec.LOTAREA ?? undefined,
+    condition: rec.CONDITIONDESC ?? undefined,
+    exteriorFinish: rec.EXTFINISH_DESC ?? undefined,
+    totalRooms: rec.TOTALROOMS ?? undefined,
     tags: generateTags(rec, equityPct),
   };
 }

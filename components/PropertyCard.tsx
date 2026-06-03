@@ -7,17 +7,25 @@ const equityStyle: Record<string, { bg: string; color: string }> = {
   low:    { bg: "#fee2e2", color: "#b91c1c" },
 };
 
-export default function PropertyCard({ property }: { property: Property }) {
+interface Props {
+  property: Property;
+  onClick?: () => void;
+}
+
+export default function PropertyCard({ property, onClick }: Props) {
   const eq = equityStyle[property.equityLevel];
   return (
     <div
-      className="rounded-xl p-5 cursor-pointer transition-shadow hover:shadow-md"
+      className="rounded-xl p-5 cursor-pointer transition-all hover:shadow-md"
       style={{ background: "#fff", border: "1px solid #e5e5e5" }}
+      onClick={onClick}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#000000"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#e5e5e5"; }}
     >
       <div className="flex items-start justify-between mb-3">
-        <div>
-          <div className="flex items-center gap-1.5 font-semibold" style={{ color: "#111111" }}>
-            <MapPin size={14} style={{ color: "#000000" }} />
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 font-semibold truncate" style={{ color: "#111111" }}>
+            <MapPin size={14} className="flex-shrink-0" style={{ color: "#000000" }} />
             {property.address}
           </div>
           <p className="text-sm mt-0.5" style={{ color: "#888888" }}>
@@ -25,7 +33,7 @@ export default function PropertyCard({ property }: { property: Property }) {
           </p>
         </div>
         <span
-          className="text-xs font-medium px-2.5 py-1 rounded-full"
+          className="ml-2 flex-shrink-0 text-xs font-medium px-2.5 py-1 rounded-full"
           style={{ background: eq.bg, color: eq.color }}
         >
           {property.equityLevel} equity
@@ -42,17 +50,17 @@ export default function PropertyCard({ property }: { property: Property }) {
           <p className="text-sm font-semibold" style={{ color: "#16a34a" }}>{property.equity}</p>
         </div>
         <div>
-          <p className="text-xs" style={{ color: "#888888" }}>Owner</p>
-          <p className="text-sm font-semibold truncate" style={{ color: "#111111" }}>{property.ownerName}</p>
+          <p className="text-xs" style={{ color: "#888888" }}>Type</p>
+          <p className="text-sm font-semibold" style={{ color: "#111111" }}>{property.propertyType}</p>
         </div>
       </div>
 
       <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: "1px solid #f0f0f0" }}>
         <span className="text-xs" style={{ color: "#888888" }}>
-          {property.propertyType} · {property.beds > 0 ? `${property.beds}bd/${property.baths}ba` : "—"}
+          {property.beds > 0 ? `${property.beds}bd/${property.baths}ba` : "—"} {property.sqft > 0 ? `· ${property.sqft.toLocaleString()} sqft` : ""}
         </span>
         <span className="text-xs" style={{ color: "#888888" }}>
-          {property.sqft > 0 ? `${property.sqft.toLocaleString()} sqft` : "—"}
+          {property.yearBuilt > 0 ? `Built ${property.yearBuilt}` : ""}
         </span>
       </div>
 

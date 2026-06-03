@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 import { Search, MapPin, Loader2, Building2 } from "lucide-react";
 import PropertyCard from "@/components/PropertyCard";
+import PropertyDetailModal from "@/components/PropertyDetailModal";
 import { wprdcToProperty, WPRDCRecord } from "@/lib/wprdc";
+import { Property } from "@/lib/types";
 
 const SUGGESTIONS = [
   "Squirrel Hill Pittsburgh",
@@ -20,6 +22,7 @@ export default function PropertySearch() {
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
 
   async function runSearch(q: string) {
     if (!q.trim()) return;
@@ -45,10 +48,7 @@ export default function PropertySearch() {
       {/* Search bar */}
       <div className="rounded-xl p-4 md:p-5 mb-5 md:mb-6" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
         <div className="flex items-center gap-2 mb-2">
-          <span
-            className="text-xs font-semibold px-2 py-0.5 rounded-full"
-            style={{ background: "#f0f0f0", color: "#000000" }}
-          >
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#f0f0f0", color: "#000000" }}>
             LIVE · Allegheny County
           </span>
           <span className="text-xs" style={{ color: "#888888" }}>140,000+ properties · updated daily</span>
@@ -148,22 +148,23 @@ export default function PropertySearch() {
         </div>
       )}
 
-      {/* Results */}
+      {/* Results grid */}
       {!isPending && properties.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
           {properties.map((p) => (
-            <PropertyCard key={p.id} property={p} />
+            <PropertyCard
+              key={p.id}
+              property={p}
+              onClick={() => setSelectedProperty(p)}
+            />
           ))}
         </div>
       )}
 
-      {/* Pre-search */}
+      {/* Pre-search state */}
       {!searched && (
         <div className="rounded-xl p-10 md:p-16 text-center" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
-          <div
-            className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
-            style={{ background: "#f0f0f0" }}
-          >
+          <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "#f0f0f0" }}>
             <Search size={24} style={{ color: "#000000" }} />
           </div>
           <p className="font-semibold mb-1" style={{ color: "#111111" }}>Search Pittsburgh properties</p>
@@ -180,6 +181,12 @@ export default function PropertySearch() {
           </div>
         </div>
       )}
+
+      {/* Detail modal */}
+      <PropertyDetailModal
+        property={selectedProperty}
+        onClose={() => setSelectedProperty(null)}
+      />
     </div>
   );
 }

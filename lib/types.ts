@@ -15,9 +15,22 @@ export interface Property {
   equityPercent: number;
   ownerName: string;
   ownerType: "Individual" | "LLC" | "Trust" | "Corporate";
+  ownerMailingLine1?: string;
+  ownerMailingLine2?: string;
+  ownerMailingCity?: string;
+  ownerMailingState?: string;
+  ownerMailingZip?: string;
+  isHomestead?: boolean;
+  neighborhood?: string;
   lastSaleDate: string;
   lastSalePrice: string;
+  prevSaleDate?: string;
+  prevSalePrice?: string;
   openMortgage: string;
+  lotArea?: number;
+  condition?: string;
+  exteriorFinish?: string;
+  totalRooms?: number;
   tags: string[];
 }
 
