@@ -1,10 +1,11 @@
 import Header from "@/components/Header";
 import StatsCard from "@/components/StatsCard";
 import { mockLeads } from "@/lib/mock-data";
-import { Search, Users, TrendingUp, DollarSign, MapPin, ChevronRight } from "lucide-react";
+import { Search, Users, TrendingUp, DollarSign, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { searchWPRDC, wprdcToProperty } from "@/lib/wprdc";
 import PropertyCard from "@/components/PropertyCard";
+import QuickSearchInput from "@/components/QuickSearchInput";
 
 export const revalidate = 3600;
 
@@ -41,17 +42,7 @@ export default async function Dashboard() {
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#f9e2dc", color: "#492b23" }}>LIVE</span>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
-            <div className="flex-1 relative">
-              <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#9e948c" }} />
-              <input
-                type="text"
-                placeholder="Search Pittsburgh address, ZIP, or neighborhood..."
-                className="w-full pl-9 pr-4 py-2.5 rounded-lg text-sm outline-none"
-                style={{ border: "1px solid #e8e2db" }}
-                onFocus={(e) => (e.target.style.borderColor = "#492b23")}
-                onBlur={(e) => (e.target.style.borderColor = "#e8e2db")}
-              />
-            </div>
+            <QuickSearchInput />
             <Link
               href="/properties"
               className="flex items-center justify-center gap-2 px-5 py-2.5 text-white rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
@@ -105,10 +96,7 @@ export default async function Dashboard() {
                   </thead>
                   <tbody>
                     {mockLeads.map((lead) => (
-                      <tr key={lead.id} className="cursor-pointer" style={{ borderTop: "1px solid #f0ebe6" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background="#f5f1ee")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background="transparent")}
-                      >
+                      <tr key={lead.id} className="cursor-pointer" style={{ borderTop: "1px solid #f0ebe6" }}>
                         <td className="px-4 py-3">
                           <p className="font-medium" style={{ color: "#2d2825" }}>{lead.name}</p>
                           <p className="text-xs" style={{ color: "#9e948c" }}>{lead.listName}</p>
