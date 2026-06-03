@@ -1,0 +1,107 @@
+import Header from "@/components/Header";
+import StatsCard from "@/components/StatsCard";
+import PropertyCard from "@/components/PropertyCard";
+import { mockProperties, mockLeads } from "@/lib/mock-data";
+import { Search, Users, TrendingUp, DollarSign, MapPin, ChevronRight } from "lucide-react";
+import Link from "next/link";
+
+export default function Dashboard() {
+  const highEquityProps = mockProperties.filter((p) => p.equityLevel === "high");
+
+  return (
+    <div>
+      <Header title="Dashboard" subtitle="Your real estate investment overview" />
+      <div className="p-8">
+        <div className="grid grid-cols-4 gap-5 mb-8">
+          <StatsCard label="Properties Found" value="1,284" change="+48 this week" positive icon={Search} color="blue" />
+          <StatsCard label="Active Leads" value="37" change="+5 this week" positive icon={Users} color="green" />
+          <StatsCard label="Avg. Equity" value="$128K" change="+$4.2K vs last month" positive icon={TrendingUp} color="orange" />
+          <StatsCard label="Est. Deal Value" value="$2.4M" change="across active leads" icon={DollarSign} color="purple" />
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+          <h2 className="text-base font-semibold text-gray-900 mb-4">Quick Property Search</h2>
+          <div className="flex gap-3">
+            <div className="flex-1 relative">
+              <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Enter address, city, ZIP, or owner name..."
+                className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <Link
+              href="/properties"
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              <Search size={16} />
+              Search
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-8">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-gray-900">High Equity Opportunities</h2>
+              <Link href="/properties" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                View all <ChevronRight size={14} />
+              </Link>
+            </div>
+            <div className="space-y-4">
+              {highEquityProps.map((p) => (
+                <PropertyCard key={p.id} property={p} />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-gray-900">Recent Leads</h2>
+              <Link href="/leads" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                View all <ChevronRight size={14} />
+              </Link>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Name</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Equity</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {mockLeads.map((lead) => (
+                    <tr key={lead.id} className="hover:bg-gray-50 cursor-pointer">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-gray-900">{lead.name}</p>
+                        <p className="text-xs text-gray-400">{lead.listName}</p>
+                      </td>
+                      <td className="px-4 py-3 font-medium text-green-600">{lead.equity}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                            lead.status === "Negotiating"
+                              ? "bg-orange-100 text-orange-700"
+                              : lead.status === "Contacted"
+                              ? "bg-blue-100 text-blue-700"
+                              : lead.status === "New"
+                              ? "bg-gray-100 text-gray-700"
+                              : "bg-green-100 text-green-700"
+                          }`}
+                        >
+                          {lead.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
