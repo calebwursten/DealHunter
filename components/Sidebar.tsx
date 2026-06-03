@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -50,14 +49,17 @@ export default function Sidebar() {
         {/* Logo */}
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid #3d3530" }}>
           <div className="flex items-center gap-3">
-            <Image
-              src="/logo.png"
-              alt="Wursten"
-              width={36}
-              height={36}
-              className="rounded-lg"
-              style={{ filter: "brightness(0) invert(1)" }}
-            />
+            <div
+              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: "#492b23" }}
+            >
+              <span
+                className="text-white font-black leading-none select-none"
+                style={{ fontSize: "22px", fontFamily: "Montserrat, sans-serif", letterSpacing: "-0.5px" }}
+              >
+                W
+              </span>
+            </div>
             <div className="leading-tight">
               <p className="text-white font-semibold text-sm tracking-wide">Wursten</p>
               <p className="text-xs font-light tracking-widest uppercase" style={{ color: "#9e948c" }}>Deals</p>
