@@ -38,7 +38,7 @@ export async function getCachedCoords(
   const sql = getSql();
   if (!sql || parids.length === 0) return {};
   await ensureTable();
-  const rows = await sql<CachedCoord[]>`
+  const rows = await sql<CachedCoord>`
     SELECT parid, lat, lng
     FROM   geocode_cache
     WHERE  parid = ANY(${parids})
