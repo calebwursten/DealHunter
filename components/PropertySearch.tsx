@@ -43,74 +43,73 @@ export default function PropertySearch() {
   return (
     <div>
       {/* Search bar */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-5 mb-5 md:mb-6">
+      <div className="rounded-xl p-4 md:p-5 mb-5 md:mb-6" style={{ background: "#fff", border: "1px solid #e8e2db" }}>
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+          <span
+            className="text-xs font-semibold px-2 py-0.5 rounded-full"
+            style={{ background: "#f9e2dc", color: "#492b23" }}
+          >
             LIVE · Allegheny County
           </span>
-          <span className="text-xs text-gray-400">140,000+ properties · updated daily</span>
+          <span className="text-xs" style={{ color: "#9e948c" }}>140,000+ properties · updated daily</span>
         </div>
+
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1 relative">
-            <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#9e948c" }} />
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
               placeholder="Search by address, neighborhood, or ZIP..."
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-9 pr-4 py-2.5 rounded-lg text-sm outline-none"
+              style={{ border: "1px solid #e8e2db" }}
+              onFocus={(e) => (e.target.style.borderColor = "#492b23")}
+              onBlur={(e) => (e.target.style.borderColor = "#e8e2db")}
             />
           </div>
           <button
             onClick={() => runSearch(query)}
             disabled={isPending}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+            style={{ background: "#492b23" }}
           >
             {isPending ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
             Search
           </button>
         </div>
 
-        {/* Quick suggestions */}
         {!searched && (
           <div className="flex gap-2 mt-3 flex-wrap">
-            <span className="text-xs text-gray-400 self-center">Try:</span>
+            <span className="text-xs self-center" style={{ color: "#9e948c" }}>Try:</span>
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
                 onClick={() => { setQuery(s); runSearch(s); }}
-                className="text-xs px-2.5 py-1 border border-gray-200 rounded-full text-gray-600 hover:bg-gray-50 hover:border-blue-300 hover:text-blue-600 transition-colors"
+                className="text-xs px-2.5 py-1 rounded-full transition-colors"
+                style={{ border: "1px solid #e8e2db", color: "#5d544c" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#492b23"; (e.currentTarget as HTMLElement).style.color = "#492b23"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#e8e2db"; (e.currentTarget as HTMLElement).style.color = "#5d544c"; }}
               >
                 {s}
               </button>
             ))}
           </div>
         )}
-
-        {/* Filters row */}
-        {searched && (
-          <div className="flex gap-2 mt-3 flex-wrap">
-            {["Single Family", "Multi-Family", "High Equity", "Owner-Occupied"].map((f) => (
-              <button
-                key={f}
-                className="text-xs px-2.5 py-1 border border-gray-200 rounded-full text-gray-500 hover:bg-gray-50 transition-colors"
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Results header */}
+      {/* Results count */}
       {searched && !isPending && !error && (
         <div className="flex items-center justify-between mb-4">
-          <p className="text-sm text-gray-500">
-            <span className="font-semibold text-gray-900">{total.toLocaleString()}</span> properties found
-            {query && <span className="text-gray-400"> for &ldquo;{query}&rdquo;</span>}
+          <p className="text-sm" style={{ color: "#9e948c" }}>
+            <span className="font-semibold" style={{ color: "#2d2825" }}>{total.toLocaleString()}</span> properties found
+            {query && <span> for &ldquo;{query}&rdquo;</span>}
           </p>
-          <select className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <select
+            className="text-sm rounded-lg px-3 py-1.5 outline-none"
+            style={{ border: "1px solid #e8e2db", background: "#fff", color: "#2d2825" }}
+          >
             <option>Highest Equity</option>
             <option>Lowest Price</option>
             <option>Newest Sale</option>
@@ -122,13 +121,11 @@ export default function PropertySearch() {
       {isPending && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-              <div className="h-3 bg-gray-100 rounded w-1/2 mb-4" />
+            <div key={i} className="rounded-xl p-5 animate-pulse" style={{ background: "#fff", border: "1px solid #e8e2db" }}>
+              <div className="h-4 rounded w-3/4 mb-2" style={{ background: "#f0ebe6" }} />
+              <div className="h-3 rounded w-1/2 mb-4" style={{ background: "#f5f1ee" }} />
               <div className="grid grid-cols-3 gap-3">
-                <div className="h-8 bg-gray-100 rounded" />
-                <div className="h-8 bg-gray-100 rounded" />
-                <div className="h-8 bg-gray-100 rounded" />
+                {[0,1,2].map(j => <div key={j} className="h-8 rounded" style={{ background: "#f5f1ee" }} />)}
               </div>
             </div>
           ))}
@@ -137,21 +134,21 @@ export default function PropertySearch() {
 
       {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700">
+        <div className="rounded-xl p-5 text-sm" style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#b91c1c" }}>
           {error}
         </div>
       )}
 
-      {/* Empty state */}
+      {/* No results */}
       {searched && !isPending && !error && results.length === 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <Building2 size={40} className="mx-auto text-gray-300 mb-3" />
-          <p className="font-medium text-gray-700">No properties found</p>
-          <p className="text-sm text-gray-400 mt-1">Try a street name, ZIP code, or neighborhood</p>
+        <div className="rounded-xl p-12 text-center" style={{ background: "#fff", border: "1px solid #e8e2db" }}>
+          <Building2 size={40} className="mx-auto mb-3" style={{ color: "#e8e2db" }} />
+          <p className="font-medium" style={{ color: "#5d544c" }}>No properties found</p>
+          <p className="text-sm mt-1" style={{ color: "#9e948c" }}>Try a street name, ZIP code, or neighborhood</p>
         </div>
       )}
 
-      {/* Results grid */}
+      {/* Results */}
       {!isPending && properties.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
           {properties.map((p) => (
@@ -160,21 +157,24 @@ export default function PropertySearch() {
         </div>
       )}
 
-      {/* Pre-search empty state */}
+      {/* Pre-search */}
       {!searched && (
-        <div className="bg-white rounded-xl border border-gray-200 p-10 md:p-16 text-center">
-          <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
-            <Search size={24} className="text-blue-500" />
+        <div className="rounded-xl p-10 md:p-16 text-center" style={{ background: "#fff", border: "1px solid #e8e2db" }}>
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+            style={{ background: "#f9e2dc" }}
+          >
+            <Search size={24} style={{ color: "#492b23" }} />
           </div>
-          <p className="font-semibold text-gray-800 mb-1">Search Pittsburgh properties</p>
-          <p className="text-sm text-gray-400 max-w-xs mx-auto">
+          <p className="font-semibold mb-1" style={{ color: "#2d2825" }}>Search Pittsburgh properties</p>
+          <p className="text-sm max-w-xs mx-auto" style={{ color: "#9e948c" }}>
             Live data from Allegheny County — ownership, assessed values, sale history, and building details.
           </p>
           <div className="mt-6 grid grid-cols-3 gap-4 max-w-sm mx-auto">
-            {[["140K+", "Properties"], ["Daily", "Updates"], ["Free", "No API key"]].map(([val, label]) => (
+            {[["140K+","Properties"],["Daily","Updates"],["Free","No API key"]].map(([val,label]) => (
               <div key={label}>
-                <p className="font-bold text-blue-600 text-lg">{val}</p>
-                <p className="text-xs text-gray-400">{label}</p>
+                <p className="font-bold text-lg" style={{ color: "#492b23" }}>{val}</p>
+                <p className="text-xs" style={{ color: "#9e948c" }}>{label}</p>
               </div>
             ))}
           </div>

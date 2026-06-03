@@ -1,57 +1,69 @@
 import { MapPin } from "lucide-react";
 import { Property } from "@/lib/types";
-import clsx from "clsx";
 
-const equityColors = {
-  high: "bg-green-100 text-green-700",
-  medium: "bg-yellow-100 text-yellow-700",
-  low: "bg-red-100 text-red-700",
+const equityStyle: Record<string, { bg: string; color: string }> = {
+  high:   { bg: "#dcfce7", color: "#15803d" },
+  medium: { bg: "#fef9c3", color: "#a16207" },
+  low:    { bg: "#fee2e2", color: "#b91c1c" },
 };
 
 export default function PropertyCard({ property }: { property: Property }) {
+  const eq = equityStyle[property.equityLevel];
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer">
+    <div
+      className="rounded-xl p-5 cursor-pointer transition-shadow hover:shadow-md"
+      style={{ background: "#fff", border: "1px solid #e8e2db" }}
+    >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="flex items-center gap-1.5 text-gray-900 font-semibold">
-            <MapPin size={14} className="text-blue-500" />
+          <div className="flex items-center gap-1.5 font-semibold" style={{ color: "#2d2825" }}>
+            <MapPin size={14} style={{ color: "#492b23" }} />
             {property.address}
           </div>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <p className="text-sm mt-0.5" style={{ color: "#9e948c" }}>
             {property.city}, {property.state} {property.zip}
           </p>
         </div>
-        <span className={clsx("text-xs font-medium px-2.5 py-1 rounded-full", equityColors[property.equityLevel])}>
+        <span
+          className="text-xs font-medium px-2.5 py-1 rounded-full"
+          style={{ background: eq.bg, color: eq.color }}
+        >
           {property.equityLevel} equity
         </span>
       </div>
 
       <div className="grid grid-cols-3 gap-3 mt-4">
         <div>
-          <p className="text-xs text-gray-400">Est. Value</p>
-          <p className="text-sm font-semibold text-gray-800">{property.estimatedValue}</p>
+          <p className="text-xs" style={{ color: "#9e948c" }}>Est. Value</p>
+          <p className="text-sm font-semibold" style={{ color: "#2d2825" }}>{property.estimatedValue}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-400">Equity</p>
-          <p className="text-sm font-semibold text-green-600">{property.equity}</p>
+          <p className="text-xs" style={{ color: "#9e948c" }}>Equity</p>
+          <p className="text-sm font-semibold" style={{ color: "#16a34a" }}>{property.equity}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-400">Owner</p>
-          <p className="text-sm font-semibold text-gray-800 truncate">{property.ownerName}</p>
+          <p className="text-xs" style={{ color: "#9e948c" }}>Owner</p>
+          <p className="text-sm font-semibold truncate" style={{ color: "#2d2825" }}>{property.ownerName}</p>
         </div>
       </div>
 
-      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-        <span className="text-xs text-gray-400">
-          {property.propertyType} · {property.beds}bd/{property.baths}ba
+      <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: "1px solid #f0ebe6" }}>
+        <span className="text-xs" style={{ color: "#9e948c" }}>
+          {property.propertyType} · {property.beds > 0 ? `${property.beds}bd/${property.baths}ba` : "—"}
         </span>
-        <span className="text-xs text-gray-400">{property.sqft.toLocaleString()} sqft</span>
+        <span className="text-xs" style={{ color: "#9e948c" }}>
+          {property.sqft > 0 ? `${property.sqft.toLocaleString()} sqft` : "—"}
+        </span>
       </div>
 
       {property.tags.length > 0 && (
         <div className="mt-2 flex gap-1.5 flex-wrap">
           {property.tags.map((tag) => (
-            <span key={tag} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
+            <span
+              key={tag}
+              className="text-xs px-2 py-0.5 rounded-full"
+              style={{ background: "#f9e2dc", color: "#492b23" }}
+            >
               {tag}
             </span>
           ))}

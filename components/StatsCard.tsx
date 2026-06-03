@@ -1,5 +1,4 @@
 import { LucideIcon } from "lucide-react";
-import clsx from "clsx";
 
 interface StatsCardProps {
   label: string;
@@ -7,28 +6,29 @@ interface StatsCardProps {
   change?: string;
   positive?: boolean;
   icon: LucideIcon;
-  color?: "blue" | "green" | "orange" | "purple";
+  color?: "brand" | "green" | "orange" | "purple";
 }
 
-const colors = {
-  blue: "bg-blue-50 text-blue-600",
-  green: "bg-green-50 text-green-600",
-  orange: "bg-orange-50 text-orange-600",
-  purple: "bg-purple-50 text-purple-600",
+const iconStyles: Record<string, { bg: string; color: string }> = {
+  brand:  { bg: "#f9e2dc", color: "#492b23" },
+  green:  { bg: "#dcfce7", color: "#16a34a" },
+  orange: { bg: "#ffedd5", color: "#ea580c" },
+  purple: { bg: "#f3e8ff", color: "#9333ea" },
 };
 
-export default function StatsCard({ label, value, change, positive, icon: Icon, color = "blue" }: StatsCardProps) {
+export default function StatsCard({ label, value, change, positive, icon: Icon, color = "brand" }: StatsCardProps) {
+  const { bg, color: iconColor } = iconStyles[color];
   return (
-    <div className="bg-white rounded-xl p-5 border border-gray-200 shadow-sm">
+    <div className="rounded-xl p-5 shadow-sm" style={{ background: "#fff", border: "1px solid #e8e2db" }}>
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm text-gray-500 font-medium">{label}</span>
-        <div className={clsx("p-2 rounded-lg", colors[color])}>
-          <Icon size={18} />
+        <span className="text-sm font-medium" style={{ color: "#9e948c" }}>{label}</span>
+        <div className="p-2 rounded-lg" style={{ background: bg }}>
+          <Icon size={18} style={{ color: iconColor }} />
         </div>
       </div>
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      <p className="text-2xl font-bold" style={{ color: "#2d2825" }}>{value}</p>
       {change && (
-        <p className={clsx("text-xs mt-1 font-medium", positive ? "text-green-600" : "text-gray-400")}>
+        <p className="text-xs mt-1 font-medium" style={{ color: positive ? "#16a34a" : "#9e948c" }}>
           {change}
         </p>
       )}

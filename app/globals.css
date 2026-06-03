@@ -1,5 +1,29 @@
 @import "tailwindcss";
 
+@theme {
+  /* Wursten brand — deep burgundy derived from wursten.co */
+  --color-brand-50:  #fdf3f1;
+  --color-brand-100: #f9e2dc;
+  --color-brand-200: #f2c0b4;
+  --color-brand-300: #e5907e;
+  --color-brand-400: #d45f4c;
+  --color-brand-500: #b84035;
+  --color-brand-600: #492b23;
+  --color-brand-700: #3a2019;
+  --color-brand-800: #2d1810;
+  --color-brand-900: #1e100b;
+
+  /* Warm sidebar — charcoal from wursten.co */
+  --color-wu-950: #1e1b18;
+  --color-wu-900: #2d2825;
+  --color-wu-800: #3d3530;
+  --color-wu-700: #4d453f;
+  --color-wu-600: #5d544c;
+  --color-wu-400: #9e948c;
+  --color-wu-300: #c0b8b0;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #f5f1ee;
 }

@@ -9,16 +9,22 @@ export default function SearchBar({ placeholder = "Search by address, ZIP, owner
   return (
     <div className="flex flex-col sm:flex-row gap-2">
       <div className="flex-1 relative">
-        <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#9e948c" }} />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
-          className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full pl-9 pr-4 py-2.5 rounded-lg text-sm outline-none"
+          style={{ border: "1px solid #e8e2db", background: "#fff" }}
+          onFocus={(e) => (e.target.style.borderColor = "#492b23")}
+          onBlur={(e) => (e.target.style.borderColor = "#e8e2db")}
         />
       </div>
-      <button className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+      <button
+        className="flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+        style={{ background: "#492b23" }}
+      >
         <Search size={16} />
         Search
       </button>
