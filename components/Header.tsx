@@ -1,4 +1,5 @@
 import { Bell, HelpCircle } from "lucide-react";
+import Image from "next/image";
 
 interface HeaderProps {
   title: string;
@@ -24,10 +25,16 @@ export default function Header({ title, subtitle }: HeaderProps) {
           <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: "#492b23" }} />
         </button>
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
-          style={{ background: "#492b23" }}
+          className="w-9 h-9 rounded-full flex items-center justify-center overflow-hidden"
+          style={{ background: "#2d2825" }}
         >
-          W
+          <Image
+            src="/logo.png"
+            alt="Wursten"
+            width={28}
+            height={28}
+            style={{ filter: "brightness(0) invert(1)", objectFit: "contain" }}
+          />
         </div>
       </div>
     </div>

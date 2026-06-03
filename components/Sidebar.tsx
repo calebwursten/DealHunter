@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -25,7 +26,6 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Hamburger */}
       <button
         onClick={() => setOpen(true)}
         className="md:hidden fixed top-3.5 left-4 z-50 p-2 rounded-lg text-white shadow-lg"
@@ -35,12 +35,10 @@ export default function Sidebar() {
         <Menu size={20} />
       </button>
 
-      {/* Backdrop */}
       {open && (
         <div className="md:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setOpen(false)} />
       )}
 
-      {/* Panel */}
       <aside
         className={clsx(
           "fixed top-0 left-0 h-full w-60 flex flex-col z-50",
@@ -50,18 +48,19 @@ export default function Sidebar() {
         style={{ background: "#2d2825" }}
       >
         {/* Logo */}
-        <div className="p-5 flex items-center justify-between" style={{ borderBottom: "1px solid #3d3530" }}>
-          <div className="flex items-center gap-2.5">
-            {/* W monogram */}
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-              style={{ background: "#492b23" }}
-            >
-              W
-            </div>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid #3d3530" }}>
+          <div className="flex items-center gap-3">
+            <Image
+              src="/logo.png"
+              alt="Wursten"
+              width={36}
+              height={36}
+              className="rounded-lg"
+              style={{ filter: "brightness(0) invert(1)" }}
+            />
             <div className="leading-tight">
-              <span className="text-white font-bold text-base tracking-tight">Wursten</span>
-              <span className="font-light text-base tracking-tight" style={{ color: "#9e948c" }}> Deals</span>
+              <p className="text-white font-semibold text-sm tracking-wide">Wursten</p>
+              <p className="text-xs font-light tracking-widest uppercase" style={{ color: "#9e948c" }}>Deals</p>
             </div>
           </div>
           <button onClick={() => setOpen(false)} className="md:hidden" style={{ color: "#9e948c" }}>
@@ -69,7 +68,6 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 p-4 space-y-0.5 overflow-y-auto">
           {nav.map(({ label, href, icon: Icon }) => {
             const active = pathname === href;
@@ -77,15 +75,13 @@ export default function Sidebar() {
               <Link
                 key={href}
                 href={href}
-                className={clsx(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                )}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
                 style={{
                   background: active ? "#492b23" : "transparent",
                   color: active ? "#fff" : "#9e948c",
                 }}
-                onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "#3d3530"; (e.currentTarget as HTMLElement).style.color = "#fff"; }}
-                onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#9e948c"; }}
+                onMouseEnter={(e) => { if (!active) { (e.currentTarget as HTMLElement).style.background = "#3d3530"; (e.currentTarget as HTMLElement).style.color = "#fff"; }}}
+                onMouseLeave={(e) => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#9e948c"; }}}
               >
                 <Icon size={17} />
                 {label}
@@ -94,7 +90,6 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* Footer */}
         <div className="p-4" style={{ borderTop: "1px solid #3d3530" }}>
           <Link
             href="/settings"
