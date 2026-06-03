@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import "leaflet/dist/leaflet.css";
-import type L from "leaflet";
 import { Property } from "@/lib/types";
 import { Loader2 } from "lucide-react";
 
@@ -10,166 +9,146 @@ interface Props {
   properties: Property[];
   onSelect: (p: Property) => void;
 }
-
 interface Coord { lat: number; lng: number; }
 
-// Equity dot colours
-const EQ = {
-  high:   "#16a34a",
-  medium: "#ca8a04",
-  low:    "#dc2626",
-};
+const EQ = { high: "#16a34a", medium: "#ca8a04", low: "#dc2626" } as const;
 
-function markerHtml(eq: Property["equityLevel"]) {
-  return `<div style="
-    width:14px;height:14px;border-radius:50%;
-    background:${EQ[eq]};border:2.5px solid #fff;
-    box-shadow:0 1px 5px rgba(0,0,0,.45);
-    cursor:pointer;transition:transform .1s;
-  " onmouseenter="this.style.transform='scale(1.4)'" onmouseleave="this.style.transform='scale(1)'"></div>`;
+function dot(eq: Property["equityLevel"]) {
+  return `<div style="width:13px;height:13px;border-radius:50%;background:${EQ[eq]};border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);cursor:pointer;transition:transform .1s" onmouseenter="this.style.transform='scale(1.5)'" onmouseleave="this.style.transform='scale(1)'"></div>`;
 }
 
 export default function MapView({ properties, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<L.Map | null>(null);
-  const markersRef   = useRef<L.Marker[]>([]);
-  const [coords, setCoords]   = useState<Record<string, Coord>>({});
-  const [loading, setLoading] = useState(false);
-  const [mapped, setMapped]   = useState(0);
+  const mapRef       = useRef<unknown>(null);
+  const markersRef   = useRef<Map<string, unknown>>(new Map());
+  const [coords, setCoords]     = useState<Record<string, Coord>>({});
+  const [geocoding, setGeocoding] = useState(false);
+  const [mapped, setMapped]     = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Init Leaflet (import dynamically to avoid SSR)
+  // ── Init Leaflet ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     let cancelled = false;
-
     import("leaflet").then((L) => {
       if (cancelled || !containerRef.current) return;
       const map = L.map(containerRef.current, { zoomControl: false }).setView([40.4406, -79.9959], 12);
-
-      // CartoDB Positron — clean light basemap
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        attribution: "© <a href='https://openstreetmap.org'>OSM</a> contributors © <a href='https://carto.com'>CARTO</a>",
+        attribution: "© <a href='https://openstreetmap.org'>OSM</a> © <a href='https://carto.com'>CARTO</a>",
         maxZoom: 19,
       }).addTo(map);
-
       L.control.zoom({ position: "bottomright" }).addTo(map);
       mapRef.current = map;
     });
-
-    return () => {
-      cancelled = true;
-      mapRef.current?.remove();
-      mapRef.current = null;
-    };
+    return () => { cancelled = true; (mapRef.current as { remove?: () => void })?.remove?.(); mapRef.current = null; };
   }, []);
 
-  // Geocode whenever properties change
+  // ── Streaming geocode ─────────────────────────────────────────────────────
   useEffect(() => {
     if (properties.length === 0) return;
-    const toGeocode = properties.filter((p) => !coords[p.id]);
-    if (toGeocode.length === 0) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
 
-    setLoading(true);
-    fetch("/api/geocode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        properties: toGeocode.map((p) => ({
-          id: p.id,
-          address: p.address,
-          city: p.city,
-          state: p.state,
-          zip: p.zip,
-        })),
-      }),
-    })
-      .then((r) => r.json())
-      .then((results: { id: string; lat: number; lng: number }[]) => {
-        const next: Record<string, Coord> = {};
-        results.forEach((r) => { next[r.id] = { lat: r.lat, lng: r.lng }; });
-        setCoords((prev) => ({ ...prev, ...next }));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [properties]); // eslint-disable-line react-hooks/exhaustive-deps
+    setGeocoding(true);
+    setCoords({});   // reset on new search
 
-  // Place / refresh markers whenever coords or properties change
+    (async () => {
+      try {
+        const res = await fetch("/api/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: properties.map((p) => ({ id: p.id, address: p.address, city: p.city, state: p.state, zip: p.zip })) }),
+          signal: ac.signal,
+        });
+        const reader = res.body!.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop()!;
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const r = JSON.parse(line) as { id: string; lat: number; lng: number };
+              setCoords((prev) => ({ ...prev, [r.id]: { lat: r.lat, lng: r.lng } }));
+            } catch { /* bad line */ }
+          }
+        }
+      } catch (e: unknown) {
+        if ((e as { name?: string }).name !== "AbortError") console.error(e);
+      } finally {
+        setGeocoding(false);
+      }
+    })();
+
+    return () => ac.abort();
+  }, [properties]);
+
+  // ── Place / refresh markers ───────────────────────────────────────────────
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+
   useEffect(() => {
     if (!mapRef.current) return;
-
-    // Defer until Leaflet is ready (it may not be on first render)
     const tick = setTimeout(async () => {
       const L = await import("leaflet");
       if (!mapRef.current) return;
+      const map = mapRef.current as { fitBounds: (b: unknown, o: unknown) => void; setView: (c: [number,number], z: number) => void };
 
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
-
-      const placed: L.Marker[] = [];
-
+      // Add only NEW markers (don't remove existing ones)
+      const newlyPlaced: [string, unknown][] = [];
       properties.forEach((p) => {
+        if (markersRef.current.has(p.id)) return;
         const c = coords[p.id];
         if (!c) return;
 
-        const icon = L.divIcon({
-          html: markerHtml(p.equityLevel),
-          className: "",
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
-        });
-
+        const icon = L.divIcon({ html: dot(p.equityLevel), className: "", iconSize: [13, 13], iconAnchor: [6.5, 6.5] });
         const marker = L.marker([c.lat, c.lng], { icon })
-          .addTo(mapRef.current!)
-          .on("click", () => onSelect(p));
-
-        // Tooltip on hover
+          .addTo(mapRef.current as Parameters<typeof L.marker>[1] extends undefined ? never : typeof L.map.prototype)
+          .on("click", () => onSelectRef.current(p));
         marker.bindTooltip(
-          `<div style="font-family:Montserrat,sans-serif;font-size:12px;line-height:1.5">
-            <strong>${p.address}</strong><br/>
-            ${p.estimatedValue} &nbsp;·&nbsp; <span style="color:${EQ[p.equityLevel]}">${p.equity} equity</span>
-          </div>`,
+          `<div style="font-family:Montserrat,sans-serif;font-size:12px;line-height:1.5"><strong>${p.address}</strong><br/>${p.estimatedValue} &nbsp;·&nbsp; <span style="color:${EQ[p.equityLevel]}">${p.equity} equity</span></div>`,
           { direction: "top", offset: [0, -8] }
         );
-
-        placed.push(marker);
+        newlyPlaced.push([p.id, marker]);
       });
 
-      markersRef.current = placed;
-      setMapped(placed.length);
+      newlyPlaced.forEach(([id, m]) => markersRef.current.set(id, m));
+      setMapped(markersRef.current.size);
 
-      if (placed.length > 1) {
-        const group = L.featureGroup(placed);
-        mapRef.current.fitBounds(group.getBounds().pad(0.15));
-      } else if (placed.length === 1) {
-        const c = coords[properties.find(p => coords[p.id])!.id];
-        mapRef.current.setView([c.lat, c.lng], 15);
+      // Fit bounds once we have a meaningful cluster
+      if (markersRef.current.size >= 3) {
+        const group = L.featureGroup([...markersRef.current.values()] as Parameters<typeof L.featureGroup>[0]);
+        map.fitBounds(group.getBounds(), { padding: [40, 40] });
       }
-    }, 100);
-
+    }, 50);
     return () => clearTimeout(tick);
-  }, [coords, properties, onSelect]);
+  }, [coords, properties]);
+
+  // Reset markers when properties change (new search)
+  useEffect(() => {
+    markersRef.current.forEach((m) => (m as { remove: () => void }).remove());
+    markersRef.current.clear();
+    setMapped(0);
+  }, [properties]);
 
   return (
-    <div className="relative rounded-xl overflow-hidden" style={{ height: "calc(100vh - 220px)", minHeight: "400px", border: "1px solid #e5e5e5" }}>
+    <div className="relative rounded-xl overflow-hidden" style={{ height: "calc(100vh - 220px)", minHeight: "460px", border: "1px solid #e5e5e5" }}>
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 
       {/* Status badge */}
-      <div
-        className="absolute top-3 left-3 z-[1000] flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs shadow-md"
-        style={{ background: "#fff", border: "1px solid #e5e5e5", color: "#555555" }}
-      >
-        {loading ? (
-          <><Loader2 size={12} className="animate-spin" /> Geocoding addresses…</>
-        ) : (
-          <>{mapped} / {properties.length} properties mapped</>
-        )}
+      <div className="absolute top-3 left-3 z-[1000] flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs shadow-md" style={{ background: "#fff", border: "1px solid #e5e5e5", color: "#555555" }}>
+        {geocoding
+          ? <><Loader2 size={12} className="animate-spin" /> Geocoding… {mapped} mapped so far</>
+          : <>{mapped} / {properties.length} properties mapped</>}
       </div>
 
       {/* Legend */}
-      <div
-        className="absolute bottom-8 left-3 z-[1000] px-3 py-2 rounded-lg text-xs shadow-md space-y-1"
-        style={{ background: "#fff", border: "1px solid #e5e5e5" }}
-      >
+      <div className="absolute bottom-8 left-3 z-[1000] px-3 py-2 rounded-lg text-xs shadow-md space-y-1" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
         {(["high", "medium", "low"] as const).map((lvl) => (
           <div key={lvl} className="flex items-center gap-2">
             <div style={{ width: 10, height: 10, borderRadius: "50%", background: EQ[lvl], border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} />

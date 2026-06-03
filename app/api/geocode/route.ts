@@ -1,19 +1,22 @@
-import { NextRequest } from "next/server";
+export const runtime = "edge";
+
 import { getCachedCoords, storeCachedCoords } from "@/lib/db";
 
 interface AddrInput {
-  id: string;   // = PARID
+  id: string;
   address: string;
   city: string;
   state: string;
   zip: string;
 }
 
-// ── Census batch geocoder ─────────────────────────────────────────────────────
-async function censusBatch(
-  props: AddrInput[]
-): Promise<Map<string, { lat: number; lng: number }>> {
-  const csv = props
+// ── Census batch ──────────────────────────────────────────────────────────────
+async function censusBatch(props: AddrInput[]): Promise<Map<string, { lat: number; lng: number }>> {
+  // Skip entries with no house number — Census can't match them
+  const geocodable = props.filter((p) => /\d/.test(p.address));
+  if (geocodable.length === 0) return new Map();
+
+  const csv = geocodable
     .map((p, i) => `${i},"${p.address}","${p.city}","${p.state}","${p.zip}"`)
     .join("\n");
 
@@ -31,19 +34,19 @@ async function censusBatch(
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
-    const parts = splitQuotedCSV(line);
+    const parts = splitCSV(line);
     if (parts[2] !== "Match") continue;
     const idx = parseInt(parts[0], 10);
     const [lonStr, latStr] = (parts[5] ?? "").split(",");
     const lat = parseFloat(latStr), lng = parseFloat(lonStr);
-    if (!isNaN(lat) && !isNaN(lng) && idx >= 0 && idx < props.length) {
-      out.set(props[idx].id, { lat, lng });
+    if (!isNaN(lat) && !isNaN(lng) && idx >= 0 && idx < geocodable.length) {
+      out.set(geocodable[idx].id, { lat, lng });
     }
   }
   return out;
 }
 
-function splitQuotedCSV(line: string): string[] {
+function splitCSV(line: string): string[] {
   const fields: string[] = [];
   let cur = "", inQ = false;
   for (const ch of line) {
@@ -56,83 +59,74 @@ function splitQuotedCSV(line: string): string[] {
 }
 
 // ── Nominatim fallback ────────────────────────────────────────────────────────
-async function nominatimOne(
-  p: AddrInput
-): Promise<{ lat: number; lng: number } | null> {
-  try {
-    const params = new URLSearchParams({
-      street: p.address,
-      city: p.city,
-      state: p.state,
-      postalcode: p.zip,
-      country: "us",
-      format: "json",
-      limit: "1",
-    });
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?${params}`,
-      {
+async function nominatimOne(p: AddrInput): Promise<{ lat: number; lng: number } | null> {
+  // Try structured query first, then a looser one-line query
+  const attempts = [
+    new URLSearchParams({ street: p.address, city: p.city, state: p.state, postalcode: p.zip, country: "us", format: "json", limit: "1" }),
+    new URLSearchParams({ q: `${p.address}, ${p.city}, ${p.state}`, format: "json", limit: "1", countrycodes: "us" }),
+  ];
+  for (const params of attempts) {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
         headers: { "User-Agent": "WurstenDeals/1.0 (caleb@wursten.co)" },
-        signal: AbortSignal.timeout(8_000),
-      }
-    );
-    const data = await res.json();
-    if (data[0])
-      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-  } catch { /* silent */ }
+        signal: AbortSignal.timeout(6_000),
+      });
+      const data = await res.json() as { lat: string; lon: string }[];
+      if (data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    } catch { /* try next */ }
+  }
   return null;
 }
 
-function sleep(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms));
-}
+function sleep(ms: number) { return new Promise<void>((r) => setTimeout(r, ms)); }
 
-// ── Route handler ─────────────────────────────────────────────────────────────
-export async function POST(req: NextRequest) {
+// ── Streaming handler ─────────────────────────────────────────────────────────
+export async function POST(req: Request) {
   const { properties } = (await req.json()) as { properties: AddrInput[] };
-  const props = properties.slice(0, 24);
+  const props = properties.slice(0, 100);
   const parids = props.map((p) => p.id);
+  const enc = new TextEncoder();
 
-  // 1. Check the database cache first
-  const cached = await getCachedCoords(parids);
-  const results: { id: string; lat: number; lng: number }[] = Object.values(
-    cached
-  ).map((r) => ({ id: r.parid, lat: r.lat, lng: r.lng }));
+  const stream = new ReadableStream({
+    async start(ctrl) {
+      const send = (id: string, lat: number, lng: number) =>
+        ctrl.enqueue(enc.encode(JSON.stringify({ id, lat, lng }) + "\n"));
 
-  const cachedIds = new Set(Object.keys(cached));
-  const uncached = props.filter((p) => !cachedIds.has(p.id));
+      // 1 — DB cache (instant)
+      const cached = await getCachedCoords(parids);
+      for (const r of Object.values(cached)) send(r.parid, r.lat, r.lng);
 
-  if (uncached.length === 0) {
-    return Response.json(results); // 100% cache hit — instant
-  }
+      const cachedIds = new Set(Object.keys(cached));
+      const uncached = props.filter((p) => !cachedIds.has(p.id));
+      if (uncached.length === 0) { ctrl.close(); return; }
 
-  // 2. Census batch for uncached addresses
-  let censusMatched = new Map<string, { lat: number; lng: number }>();
-  try {
-    censusMatched = await censusBatch(uncached);
-  } catch { /* fall through */ }
+      // 2 — Census batch
+      let censusMap = new Map<string, { lat: number; lng: number }>();
+      try { censusMap = await censusBatch(uncached); } catch { /* continue */ }
 
-  const newEntries: { parid: string; lat: number; lng: number; address: string }[] = [];
+      const toStore: { parid: string; lat: number; lng: number; address: string }[] = [];
+      censusMap.forEach((c, id) => {
+        send(id, c.lat, c.lng);
+        toStore.push({ parid: id, lat: c.lat, lng: c.lng, address: uncached.find((p) => p.id === id)!.address });
+      });
+      await storeCachedCoords(toStore).catch(() => {});
 
-  censusMatched.forEach((coord, id) => {
-    results.push({ id, ...coord });
-    const p = uncached.find((x) => x.id === id)!;
-    newEntries.push({ parid: id, address: p.address, ...coord });
+      // 3 — Nominatim fallback for addresses Census missed
+      const stillMissing = uncached.filter((p) => !censusMap.has(p.id));
+      for (const p of stillMissing) {
+        const c = await nominatimOne(p);
+        if (c) {
+          send(p.id, c.lat, c.lng);
+          await storeCachedCoords([{ parid: p.id, lat: c.lat, lng: c.lng, address: p.address }]).catch(() => {});
+        }
+        await sleep(320);
+      }
+
+      ctrl.close();
+    },
   });
 
-  // 3. Nominatim fallback for anything Census missed
-  const stillMissing = uncached.filter((p) => !censusMatched.has(p.id));
-  for (const p of stillMissing) {
-    const coord = await nominatimOne(p);
-    if (coord) {
-      results.push({ id: p.id, ...coord });
-      newEntries.push({ parid: p.id, address: p.address, ...coord });
-    }
-    await sleep(350);
-  }
-
-  // 4. Persist newly geocoded results to database
-  await storeCachedCoords(newEntries).catch(() => {}); // non-blocking failure ok
-
-  return Response.json(results);
+  return new Response(stream, {
+    headers: { "Content-Type": "application/x-ndjson", "Cache-Control": "no-store" },
+  });
 }
