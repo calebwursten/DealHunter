@@ -12,15 +12,15 @@ export default function PropertyCard({ property }: { property: Property }) {
   return (
     <div
       className="rounded-xl p-5 cursor-pointer transition-shadow hover:shadow-md"
-      style={{ background: "#fff", border: "1px solid #e8e2db" }}
+      style={{ background: "#fff", border: "1px solid #e5e5e5" }}
     >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="flex items-center gap-1.5 font-semibold" style={{ color: "#2d2825" }}>
-            <MapPin size={14} style={{ color: "#492b23" }} />
+          <div className="flex items-center gap-1.5 font-semibold" style={{ color: "#111111" }}>
+            <MapPin size={14} style={{ color: "#000000" }} />
             {property.address}
           </div>
-          <p className="text-sm mt-0.5" style={{ color: "#9e948c" }}>
+          <p className="text-sm mt-0.5" style={{ color: "#888888" }}>
             {property.city}, {property.state} {property.zip}
           </p>
         </div>
@@ -34,24 +34,24 @@ export default function PropertyCard({ property }: { property: Property }) {
 
       <div className="grid grid-cols-3 gap-3 mt-4">
         <div>
-          <p className="text-xs" style={{ color: "#9e948c" }}>Est. Value</p>
-          <p className="text-sm font-semibold" style={{ color: "#2d2825" }}>{property.estimatedValue}</p>
+          <p className="text-xs" style={{ color: "#888888" }}>Est. Value</p>
+          <p className="text-sm font-semibold" style={{ color: "#111111" }}>{property.estimatedValue}</p>
         </div>
         <div>
-          <p className="text-xs" style={{ color: "#9e948c" }}>Equity</p>
+          <p className="text-xs" style={{ color: "#888888" }}>Equity</p>
           <p className="text-sm font-semibold" style={{ color: "#16a34a" }}>{property.equity}</p>
         </div>
         <div>
-          <p className="text-xs" style={{ color: "#9e948c" }}>Owner</p>
-          <p className="text-sm font-semibold truncate" style={{ color: "#2d2825" }}>{property.ownerName}</p>
+          <p className="text-xs" style={{ color: "#888888" }}>Owner</p>
+          <p className="text-sm font-semibold truncate" style={{ color: "#111111" }}>{property.ownerName}</p>
         </div>
       </div>
 
-      <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: "1px solid #f0ebe6" }}>
-        <span className="text-xs" style={{ color: "#9e948c" }}>
+      <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: "1px solid #f0f0f0" }}>
+        <span className="text-xs" style={{ color: "#888888" }}>
           {property.propertyType} · {property.beds > 0 ? `${property.beds}bd/${property.baths}ba` : "—"}
         </span>
-        <span className="text-xs" style={{ color: "#9e948c" }}>
+        <span className="text-xs" style={{ color: "#888888" }}>
           {property.sqft > 0 ? `${property.sqft.toLocaleString()} sqft` : "—"}
         </span>
       </div>
@@ -62,7 +62,7 @@ export default function PropertyCard({ property }: { property: Property }) {
             <span
               key={tag}
               className="text-xs px-2 py-0.5 rounded-full"
-              style={{ background: "#f9e2dc", color: "#492b23" }}
+              style={{ background: "#f0f0f0", color: "#000000" }}
             >
               {tag}
             </span>

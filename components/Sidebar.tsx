@@ -28,7 +28,7 @@ export default function Sidebar() {
       <button
         onClick={() => setOpen(true)}
         className="md:hidden fixed top-3.5 left-4 z-50 p-2 rounded-lg text-white shadow-lg"
-        style={{ background: "#2d2825" }}
+        style={{ background: "#111111" }}
         aria-label="Open menu"
       >
         <Menu size={20} />
@@ -44,14 +44,14 @@ export default function Sidebar() {
           "transition-transform duration-200 ease-in-out",
           open ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
-        style={{ background: "#2d2825" }}
+        style={{ background: "#111111" }}
       >
         {/* Logo */}
-        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid #3d3530" }}>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid #1e1e1e" }}>
           <div className="flex items-center gap-3">
             <div
               className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: "#492b23" }}
+              style={{ background: "#000000" }}
             >
               <span
                 className="text-white font-black leading-none select-none"
@@ -62,10 +62,10 @@ export default function Sidebar() {
             </div>
             <div className="leading-tight">
               <p className="text-white font-semibold text-sm tracking-wide">Wursten</p>
-              <p className="text-xs font-light tracking-widest uppercase" style={{ color: "#9e948c" }}>Deals</p>
+              <p className="text-xs font-light tracking-widest uppercase" style={{ color: "#888888" }}>Deals</p>
             </div>
           </div>
-          <button onClick={() => setOpen(false)} className="md:hidden" style={{ color: "#9e948c" }}>
+          <button onClick={() => setOpen(false)} className="md:hidden" style={{ color: "#888888" }}>
             <X size={20} />
           </button>
         </div>
@@ -79,11 +79,11 @@ export default function Sidebar() {
                 href={href}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
                 style={{
-                  background: active ? "#492b23" : "transparent",
-                  color: active ? "#fff" : "#9e948c",
+                  background: active ? "#000000" : "transparent",
+                  color: active ? "#fff" : "#888888",
                 }}
-                onMouseEnter={(e) => { if (!active) { (e.currentTarget as HTMLElement).style.background = "#3d3530"; (e.currentTarget as HTMLElement).style.color = "#fff"; }}}
-                onMouseLeave={(e) => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#9e948c"; }}}
+                onMouseEnter={(e) => { if (!active) { (e.currentTarget as HTMLElement).style.background = "#1e1e1e"; (e.currentTarget as HTMLElement).style.color = "#fff"; }}}
+                onMouseLeave={(e) => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#888888"; }}}
               >
                 <Icon size={17} />
                 {label}
@@ -92,19 +92,19 @@ export default function Sidebar() {
           })}
         </nav>
 
-        <div className="p-4" style={{ borderTop: "1px solid #3d3530" }}>
+        <div className="p-4" style={{ borderTop: "1px solid #1e1e1e" }}>
           <Link
             href="/settings"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
-            style={{ color: "#9e948c" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#3d3530"; (e.currentTarget as HTMLElement).style.color = "#fff"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#9e948c"; }}
+            style={{ color: "#888888" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#1e1e1e"; (e.currentTarget as HTMLElement).style.color = "#fff"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#888888"; }}
           >
             <Settings size={17} />
             Settings
           </Link>
-          <div className="mt-3 px-3 py-2 rounded-lg" style={{ background: "#3d3530" }}>
-            <p className="text-xs" style={{ color: "#5d544c" }}>Logged in as</p>
+          <div className="mt-3 px-3 py-2 rounded-lg" style={{ background: "#1e1e1e" }}>
+            <p className="text-xs" style={{ color: "#555555" }}>Logged in as</p>
             <p className="text-sm font-medium text-white truncate">caleb@wursten.co</p>
           </div>
         </div>

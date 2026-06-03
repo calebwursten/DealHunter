@@ -36,17 +36,17 @@ export default async function Dashboard() {
           <StatsCard label="Est. Deal Value" value="$2.4M" change="across active leads" icon={DollarSign} color="purple" />
         </div>
 
-        <div className="rounded-xl p-4 md:p-6 mb-6 md:mb-8" style={{ background: "#fff", border: "1px solid #e8e2db" }}>
+        <div className="rounded-xl p-4 md:p-6 mb-6 md:mb-8" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
           <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-sm md:text-base font-semibold" style={{ color: "#2d2825" }}>Quick Property Search</h2>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#f9e2dc", color: "#492b23" }}>LIVE</span>
+            <h2 className="text-sm md:text-base font-semibold" style={{ color: "#111111" }}>Quick Property Search</h2>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#f0f0f0", color: "#000000" }}>LIVE</span>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
             <QuickSearchInput />
             <Link
               href="/properties"
               className="flex items-center justify-center gap-2 px-5 py-2.5 text-white rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
-              style={{ background: "#492b23" }}
+              style={{ background: "#000000" }}
             >
               <Search size={16} />
               Search
@@ -58,10 +58,10 @@ export default async function Dashboard() {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm md:text-base font-semibold" style={{ color: "#2d2825" }}>High Equity Opportunities</h2>
-                <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: "#f9e2dc", color: "#492b23" }}>LIVE</span>
+                <h2 className="text-sm md:text-base font-semibold" style={{ color: "#111111" }}>High Equity Opportunities</h2>
+                <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: "#f0f0f0", color: "#000000" }}>LIVE</span>
               </div>
-              <Link href="/properties" className="text-sm flex items-center gap-1 hover:underline" style={{ color: "#492b23" }}>
+              <Link href="/properties" className="text-sm flex items-center gap-1 hover:underline" style={{ color: "#000000" }}>
                 View all <ChevronRight size={14} />
               </Link>
             </div>
@@ -70,8 +70,8 @@ export default async function Dashboard() {
                 {highEquityProps.map((p) => <PropertyCard key={p.id} property={p} />)}
               </div>
             ) : (
-              <div className="rounded-xl p-8 text-center text-sm" style={{ background: "#fff", border: "1px solid #e8e2db", color: "#9e948c" }}>
-                <Search size={24} className="mx-auto mb-2" style={{ color: "#e8e2db" }} />
+              <div className="rounded-xl p-8 text-center text-sm" style={{ background: "#fff", border: "1px solid #e5e5e5", color: "#888888" }}>
+                <Search size={24} className="mx-auto mb-2" style={{ color: "#e5e5e5" }} />
                 Use Property Search to find high-equity opportunities
               </div>
             )}
@@ -79,27 +79,27 @@ export default async function Dashboard() {
 
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm md:text-base font-semibold" style={{ color: "#2d2825" }}>Recent Leads</h2>
-              <Link href="/leads" className="text-sm flex items-center gap-1 hover:underline" style={{ color: "#492b23" }}>
+              <h2 className="text-sm md:text-base font-semibold" style={{ color: "#111111" }}>Recent Leads</h2>
+              <Link href="/leads" className="text-sm flex items-center gap-1 hover:underline" style={{ color: "#000000" }}>
                 View all <ChevronRight size={14} />
               </Link>
             </div>
-            <div className="rounded-xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e8e2db" }}>
+            <div className="rounded-xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead style={{ background: "#f5f1ee", borderBottom: "1px solid #e8e2db" }}>
+                  <thead style={{ background: "#f5f5f5", borderBottom: "1px solid #e5e5e5" }}>
                     <tr>
-                      <th className="text-left px-4 py-3 text-xs font-medium uppercase" style={{ color: "#9e948c" }}>Name</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium uppercase" style={{ color: "#9e948c" }}>Equity</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium uppercase" style={{ color: "#9e948c" }}>Status</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium uppercase" style={{ color: "#888888" }}>Name</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium uppercase" style={{ color: "#888888" }}>Equity</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium uppercase" style={{ color: "#888888" }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {mockLeads.map((lead) => (
-                      <tr key={lead.id} className="cursor-pointer" style={{ borderTop: "1px solid #f0ebe6" }}>
+                      <tr key={lead.id} className="cursor-pointer" style={{ borderTop: "1px solid #f0f0f0" }}>
                         <td className="px-4 py-3">
-                          <p className="font-medium" style={{ color: "#2d2825" }}>{lead.name}</p>
-                          <p className="text-xs" style={{ color: "#9e948c" }}>{lead.listName}</p>
+                          <p className="font-medium" style={{ color: "#111111" }}>{lead.name}</p>
+                          <p className="text-xs" style={{ color: "#888888" }}>{lead.listName}</p>
                         </td>
                         <td className="px-4 py-3 font-medium" style={{ color: "#16a34a" }}>{lead.equity}</td>
                         <td className="px-4 py-3">
