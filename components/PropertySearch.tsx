@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import dynamic from "next/dynamic";
-import { Search, MapPin, Loader2, Building2, List, Map } from "lucide-react";
+import { Search, MapPin, Loader2, Building2, List, Map, ChevronLeft, ChevronRight } from "lucide-react";
 import PropertyCard from "@/components/PropertyCard";
 import PropertyDetailModal from "@/components/PropertyDetailModal";
 import { wprdcToProperty, WPRDCRecord } from "@/lib/wprdc";
@@ -11,11 +11,15 @@ import { Property } from "@/lib/types";
 const MapView = dynamic(() => import("@/components/MapView"), {
   ssr: false,
   loading: () => (
-    <div className="rounded-xl flex items-center justify-center" style={{ height: "calc(100vh - 220px)", minHeight: "460px", background: "#f5f5f5", border: "1px solid #e5e5e5" }}>
+    <div className="rounded-xl flex items-center justify-center"
+      style={{ height: "calc(100vh - 220px)", minHeight: "460px", background: "#f5f5f5", border: "1px solid #e5e5e5" }}>
       <Loader2 size={24} className="animate-spin" style={{ color: "#888888" }} />
     </div>
   ),
 });
+
+const PAGE_SIZE = 25;
+const MAP_LIMIT = 500;
 
 const SUGGESTIONS = [
   "Squirrel Hill Pittsburgh",
@@ -26,40 +30,56 @@ const SUGGESTIONS = [
 ];
 
 export default function PropertySearch() {
-  const [query, setQuery]       = useState("");
-  const [results, setResults]   = useState<WPRDCRecord[]>([]);
-  const [total, setTotal]       = useState(0);
-  const [searched, setSearched] = useState(false);
-  const [error, setError]       = useState("");
-  const [view, setView]         = useState<"list" | "map">("list");
+  const [query, setQuery]         = useState("");
+  const [results, setResults]     = useState<WPRDCRecord[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage]           = useState(1);
+  const [searched, setSearched]   = useState(false);
+  const [error, setError]         = useState("");
+  const [view, setView]           = useState<"list" | "map">("list");
   const [isPending, startTransition] = useTransition();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
 
-  async function runSearch(q: string, currentView = view) {
-    if (!q.trim()) return;
+  async function fetchResults(q: string, currentView: "list" | "map", pageNum: number) {
+    const isMap    = currentView === "map";
+    const limit    = isMap ? MAP_LIMIT : PAGE_SIZE;
+    const offset   = isMap ? 0 : (pageNum - 1) * PAGE_SIZE;
+    const url      = `/api/search?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`;
+
     setError("");
     setSearched(true);
-    const limit = 100;
     startTransition(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+        const res  = await fetch(url);
         const data = await res.json();
         setResults(data.records ?? []);
-        setTotal(data.total ?? 0);
+        setTotalCount(data.total ?? 0);
+        setPage(pageNum);
       } catch {
         setError("Could not reach the Pittsburgh property database. Try again.");
         setResults([]);
+        setTotalCount(0);
       }
     });
   }
 
-  function switchView(next: "list" | "map") {
-    setView(next);
-    // Re-fetch with appropriate limit if we already have results
-    if (searched && query) runSearch(query, next);
+  function runSearch(q: string, currentView = view) {
+    if (!q.trim()) return;
+    fetchResults(q, currentView, 1);
   }
 
-  const properties = results.map(wprdcToProperty);
+  function goToPage(p: number) {
+    fetchResults(query, view, p);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function switchView(next: "list" | "map") {
+    setView(next);
+    if (searched && query) fetchResults(query, next, 1);
+  }
+
+  const properties  = results.map(wprdcToProperty);
+  const totalPages  = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div>
@@ -75,8 +95,7 @@ export default function PropertySearch() {
           <div className="flex-1 relative">
             <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#888888" }} />
             <input
-              type="text"
-              value={query}
+              type="text" value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
               placeholder="Search by address, neighborhood, or ZIP..."
@@ -86,12 +105,9 @@ export default function PropertySearch() {
               onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")}
             />
           </div>
-          <button
-            onClick={() => runSearch(query)}
-            disabled={isPending}
+          <button onClick={() => runSearch(query)} disabled={isPending}
             className="flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
-            style={{ background: "#000000" }}
-          >
+            style={{ background: "#000000" }}>
             {isPending ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
             Search
           </button>
@@ -114,12 +130,12 @@ export default function PropertySearch() {
 
       {/* ── Results header ── */}
       {searched && !isPending && !error && (
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <p className="text-sm" style={{ color: "#888888" }}>
-            <span className="font-semibold" style={{ color: "#111111" }}>{total.toLocaleString()}</span> properties found
-            {query && <span> for &ldquo;{query}&rdquo;</span>}
-            {view === "map" && results.length > 0 && (
-              <span className="ml-2 text-xs" style={{ color: "#aaaaaa" }}>showing top {results.length}</span>
+            <span className="font-semibold" style={{ color: "#111111" }}>{totalCount.toLocaleString()}</span>
+            {" "}properties found{query && <span> for &ldquo;{query}&rdquo;</span>}
+            {view === "list" && totalPages > 1 && (
+              <span className="ml-2" style={{ color: "#aaaaaa" }}>· page {page} of {totalPages}</span>
             )}
           </p>
           <div className="flex items-center gap-2">
@@ -152,14 +168,20 @@ export default function PropertySearch() {
             <div key={i} className="rounded-xl p-5 animate-pulse" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
               <div className="h-4 rounded w-3/4 mb-2" style={{ background: "#f0f0f0" }} />
               <div className="h-3 rounded w-1/2 mb-4" style={{ background: "#f5f5f5" }} />
-              <div className="grid grid-cols-3 gap-3">{[0,1,2].map(j=><div key={j} className="h-8 rounded" style={{ background: "#f5f5f5" }} />)}</div>
+              <div className="grid grid-cols-3 gap-3">
+                {[0,1,2].map(j => <div key={j} className="h-8 rounded" style={{ background: "#f5f5f5" }} />)}
+              </div>
             </div>
           ))}
         </div>
       )}
 
       {/* ── Error ── */}
-      {error && <div className="rounded-xl p-5 text-sm" style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#b91c1c" }}>{error}</div>}
+      {error && (
+        <div className="rounded-xl p-5 text-sm" style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#b91c1c" }}>
+          {error}
+        </div>
+      )}
 
       {/* ── No results ── */}
       {searched && !isPending && !error && results.length === 0 && (
@@ -170,18 +192,76 @@ export default function PropertySearch() {
         </div>
       )}
 
-      {/* ── Map ── */}
+      {/* ── Map view — all dots, card opens on click only ── */}
       {!isPending && properties.length > 0 && view === "map" && (
         <MapView properties={properties} onSelect={setSelectedProperty} />
       )}
 
-      {/* ── List ── */}
+      {/* ── List view ── */}
       {!isPending && properties.length > 0 && view === "list" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-          {properties.map((p) => (
-            <PropertyCard key={p.id} property={p} onClick={() => setSelectedProperty(p)} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+            {properties.map((p) => (
+              <PropertyCard key={p.id} property={p} onClick={() => setSelectedProperty(p)} />
+            ))}
+          </div>
+
+          {/* ── Pagination ── */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-8">
+              <button
+                onClick={() => goToPage(page - 1)}
+                disabled={page === 1}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30"
+                style={{ border: "1px solid #e5e5e5", color: "#111111" }}
+                onMouseEnter={(e) => { if (page > 1) (e.currentTarget as HTMLElement).style.background = "#f5f5f5"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                <ChevronLeft size={15} /> Prev
+              </button>
+
+              {/* Page number buttons — show up to 7 around current page */}
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                .reduce<(number | "…")[]>((acc, p, i, arr) => {
+                  if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push("…");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === "…" ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-sm" style={{ color: "#aaaaaa" }}>…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => goToPage(p as number)}
+                      className="w-9 h-9 rounded-lg text-sm font-medium transition-colors"
+                      style={{
+                        background: p === page ? "#000000" : "transparent",
+                        color: p === page ? "#ffffff" : "#111111",
+                        border: p === page ? "none" : "1px solid #e5e5e5",
+                      }}
+                      onMouseEnter={(e) => { if (p !== page) (e.currentTarget as HTMLElement).style.background = "#f5f5f5"; }}
+                      onMouseLeave={(e) => { if (p !== page) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+
+              <button
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= totalPages}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30"
+                style={{ border: "1px solid #e5e5e5", color: "#111111" }}
+                onMouseEnter={(e) => { if (page < totalPages) (e.currentTarget as HTMLElement).style.background = "#f5f5f5"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+              >
+                Next <ChevronRight size={15} />
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* ── Pre-search ── */}
@@ -191,7 +271,9 @@ export default function PropertySearch() {
             <Search size={24} style={{ color: "#000000" }} />
           </div>
           <p className="font-semibold mb-1" style={{ color: "#111111" }}>Search Pittsburgh properties</p>
-          <p className="text-sm max-w-xs mx-auto" style={{ color: "#888888" }}>Live data from Allegheny County — ownership, assessed values, sale history, and building details.</p>
+          <p className="text-sm max-w-xs mx-auto" style={{ color: "#888888" }}>
+            Live data from Allegheny County — ownership, assessed values, sale history, and building details.
+          </p>
           <div className="mt-6 grid grid-cols-3 gap-4 max-w-sm mx-auto">
             {[["140K+","Properties"],["Daily","Updates"],["Free","No API key"]].map(([val,label]) => (
               <div key={label}>
