@@ -19,13 +19,25 @@ export default function PropertyCard({ property, onClick }: Props) {
       className="rounded-xl p-5 cursor-pointer transition-all hover:shadow-md"
       style={{ background: "#fff", border: "1px solid #e5e5e5" }}
       onClick={onClick}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#000000"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#e5e5e5"; }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = "#000000";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = "#e5e5e5";
+      }}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 font-semibold truncate" style={{ color: "#111111" }}>
-            <MapPin size={14} className="flex-shrink-0" style={{ color: "#000000" }} />
+      {/* ── Header row ── */}
+      <div className="flex items-start justify-between mb-1">
+        <div className="min-w-0 flex-1">
+          <div
+            className="flex items-center gap-1.5 font-semibold truncate"
+            style={{ color: "#111111" }}
+          >
+            <MapPin
+              size={14}
+              className="flex-shrink-0"
+              style={{ color: "#000000" }}
+            />
             {property.address}
           </div>
           <p className="text-sm mt-0.5" style={{ color: "#888888" }}>
@@ -40,24 +52,50 @@ export default function PropertyCard({ property, onClick }: Props) {
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mt-4">
+      {/* ── Neighborhood badge ── */}
+      {property.neighborhood && (
+        <div className="mb-3 mt-1.5">
+          <span
+            className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium"
+            style={{ background: "#f0f0f0", color: "#444444" }}
+          >
+            <MapPin size={10} style={{ color: "#888888" }} />
+            {property.neighborhood}
+          </span>
+        </div>
+      )}
+
+      {/* ── Key stats ── */}
+      <div className={`grid grid-cols-3 gap-3 ${property.neighborhood ? "" : "mt-4"}`}>
         <div>
           <p className="text-xs" style={{ color: "#888888" }}>Est. Value</p>
-          <p className="text-sm font-semibold" style={{ color: "#111111" }}>{property.estimatedValue}</p>
+          <p className="text-sm font-semibold" style={{ color: "#111111" }}>
+            {property.estimatedValue}
+          </p>
         </div>
         <div>
           <p className="text-xs" style={{ color: "#888888" }}>Equity</p>
-          <p className="text-sm font-semibold" style={{ color: "#16a34a" }}>{property.equity}</p>
+          <p className="text-sm font-semibold" style={{ color: "#16a34a" }}>
+            {property.equity}
+          </p>
         </div>
         <div>
           <p className="text-xs" style={{ color: "#888888" }}>Type</p>
-          <p className="text-sm font-semibold" style={{ color: "#111111" }}>{property.propertyType}</p>
+          <p className="text-sm font-semibold" style={{ color: "#111111" }}>
+            {property.propertyType}
+          </p>
         </div>
       </div>
 
-      <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: "1px solid #f0f0f0" }}>
+      <div
+        className="mt-3 pt-3 flex items-center justify-between"
+        style={{ borderTop: "1px solid #f0f0f0" }}
+      >
         <span className="text-xs" style={{ color: "#888888" }}>
-          {property.beds > 0 ? `${property.beds}bd/${property.baths}ba` : "—"} {property.sqft > 0 ? `· ${property.sqft.toLocaleString()} sqft` : ""}
+          {property.beds > 0
+            ? `${property.beds}bd/${property.baths}ba`
+            : "—"}{" "}
+          {property.sqft > 0 ? `· ${property.sqft.toLocaleString()} sqft` : ""}
         </span>
         <span className="text-xs" style={{ color: "#888888" }}>
           {property.yearBuilt > 0 ? `Built ${property.yearBuilt}` : ""}
