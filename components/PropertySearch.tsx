@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import dynamic from "next/dynamic";
 import { Search, MapPin, Loader2, Building2, List, Map, ChevronLeft, ChevronRight } from "lucide-react";
 import PropertyCard from "@/components/PropertyCard";
@@ -18,8 +18,8 @@ const MapView = dynamic(() => import("@/components/MapView"), {
   ),
 });
 
-const PAGE_SIZE = 25;
-const MAP_LIMIT = 500;
+const PAGE_SIZE  = 25;
+const MAP_PAGE   = 500; // records per CKAN request in map mode
 
 const SUGGESTIONS = [
   "Squirrel Hill Pittsburgh",
@@ -30,22 +30,22 @@ const SUGGESTIONS = [
 ];
 
 export default function PropertySearch() {
-  const [query, setQuery]         = useState("");
-  const [results, setResults]     = useState<WPRDCRecord[]>([]);
+  const [query, setQuery]           = useState("");
+  const [results, setResults]       = useState<WPRDCRecord[]>([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [page, setPage]           = useState(1);
-  const [searched, setSearched]   = useState(false);
-  const [error, setError]         = useState("");
-  const [view, setView]           = useState<"list" | "map">("list");
+  const [page, setPage]             = useState(1);
+  const [searched, setSearched]     = useState(false);
+  const [error, setError]           = useState("");
+  const [view, setView]             = useState<"list" | "map">("list");
   const [isPending, startTransition] = useTransition();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  // Changes on every new search — tells MapView to wipe state and start fresh
+  const [mapSearchKey, setMapSearchKey] = useState(0);
+  const mapAbortRef = useRef<AbortController | null>(null);
 
-  async function fetchResults(q: string, currentView: "list" | "map", pageNum: number) {
-    const isMap    = currentView === "map";
-    const limit    = isMap ? MAP_LIMIT : PAGE_SIZE;
-    const offset   = isMap ? 0 : (pageNum - 1) * PAGE_SIZE;
-    const url      = `/api/search?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`;
-
+  // ── List view — single paginated fetch ────────────────────────────────────
+  function fetchListPage(q: string, pageNum: number) {
+    const url = `/api/search?q=${encodeURIComponent(q)}&limit=${PAGE_SIZE}&offset=${(pageNum - 1) * PAGE_SIZE}`;
     setError("");
     setSearched(true);
     startTransition(async () => {
@@ -63,23 +63,76 @@ export default function PropertySearch() {
     });
   }
 
+  // ── Map view — stream all pages into MapView progressively ────────────────
+  async function fetchAllMapPages(q: string) {
+    // Cancel any previous paginating run
+    mapAbortRef.current?.abort();
+    const ac = new AbortController();
+    mapAbortRef.current = ac;
+
+    setResults([]);
+    setTotalCount(0);
+    setSearched(true);
+    setError("");
+    // Increment key → MapView clears markers + resets geocode state
+    setMapSearchKey((k) => k + 1);
+
+    let offset = 0;
+    let total  = Infinity;
+    let all: WPRDCRecord[] = [];
+
+    try {
+      while (offset < total && !ac.signal.aborted) {
+        const res  = await fetch(
+          `/api/search?q=${encodeURIComponent(q)}&limit=${MAP_PAGE}&offset=${offset}`,
+          { signal: ac.signal }
+        );
+        const data = await res.json();
+        total = data.total ?? 0;
+        const page = (data.records ?? []) as WPRDCRecord[];
+
+        all = [...all, ...page];
+        setResults([...all]);
+        setTotalCount(total);
+
+        if (page.length < MAP_PAGE) break; // last page
+        offset += MAP_PAGE;
+      }
+    } catch (e) {
+      if ((e as { name?: string }).name !== "AbortError") {
+        setError("Could not reach the Pittsburgh property database. Try again.");
+      }
+    }
+  }
+
+  // ── Unified entry point ───────────────────────────────────────────────────
   function runSearch(q: string, currentView = view) {
     if (!q.trim()) return;
-    fetchResults(q, currentView, 1);
+    if (currentView === "map") {
+      fetchAllMapPages(q);
+    } else {
+      fetchListPage(q, 1);
+    }
   }
 
   function goToPage(p: number) {
-    fetchResults(query, view, p);
+    fetchListPage(query, p);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function switchView(next: "list" | "map") {
     setView(next);
-    if (searched && query) fetchResults(query, next, 1);
+    if (searched && query) {
+      if (next === "map") {
+        fetchAllMapPages(query);
+      } else {
+        fetchListPage(query, 1);
+      }
+    }
   }
 
-  const properties  = results.map(wprdcToProperty);
-  const totalPages  = Math.ceil(totalCount / PAGE_SIZE);
+  const properties = results.map(wprdcToProperty);
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div>
@@ -102,7 +155,7 @@ export default function PropertySearch() {
               className="w-full pl-9 pr-4 py-2.5 rounded-lg text-sm outline-none"
               style={{ border: "1px solid #e5e5e5" }}
               onFocus={(e) => (e.target.style.borderColor = "#000000")}
-              onBlur={(e) => (e.target.style.borderColor = "#e5e5e5")}
+              onBlur={(e)  => (e.target.style.borderColor = "#e5e5e5")}
             />
           </div>
           <button onClick={() => runSearch(query)} disabled={isPending}
@@ -161,7 +214,7 @@ export default function PropertySearch() {
         </div>
       )}
 
-      {/* ── Loading skeleton ── */}
+      {/* ── Loading skeleton (list view only) ── */}
       {isPending && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -184,7 +237,7 @@ export default function PropertySearch() {
       )}
 
       {/* ── No results ── */}
-      {searched && !isPending && !error && results.length === 0 && (
+      {searched && !isPending && !error && results.length === 0 && view === "list" && (
         <div className="rounded-xl p-12 text-center" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
           <Building2 size={40} className="mx-auto mb-3" style={{ color: "#e5e5e5" }} />
           <p className="font-medium" style={{ color: "#555555" }}>No properties found</p>
@@ -192,9 +245,14 @@ export default function PropertySearch() {
         </div>
       )}
 
-      {/* ── Map view — all dots, card opens on click only ── */}
-      {!isPending && properties.length > 0 && view === "map" && (
-        <MapView properties={properties} onSelect={setSelectedProperty} />
+      {/* ── Map view ── */}
+      {searched && !isPending && view === "map" && (
+        <MapView
+          properties={properties}
+          searchKey={mapSearchKey}
+          totalCount={totalCount}
+          onSelect={setSelectedProperty}
+        />
       )}
 
       {/* ── List view ── */}
@@ -206,21 +264,16 @@ export default function PropertySearch() {
             ))}
           </div>
 
-          {/* ── Pagination ── */}
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 mt-8">
-              <button
-                onClick={() => goToPage(page - 1)}
-                disabled={page === 1}
+              <button onClick={() => goToPage(page - 1)} disabled={page === 1}
                 className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30"
                 style={{ border: "1px solid #e5e5e5", color: "#111111" }}
                 onMouseEnter={(e) => { if (page > 1) (e.currentTarget as HTMLElement).style.background = "#f5f5f5"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-              >
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
                 <ChevronLeft size={15} /> Prev
               </button>
 
-              {/* Page number buttons — show up to 7 around current page */}
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
                 .reduce<(number | "…")[]>((acc, p, i, arr) => {
@@ -230,11 +283,9 @@ export default function PropertySearch() {
                 }, [])
                 .map((p, i) =>
                   p === "…" ? (
-                    <span key={`ellipsis-${i}`} className="px-1 text-sm" style={{ color: "#aaaaaa" }}>…</span>
+                    <span key={`e-${i}`} className="px-1 text-sm" style={{ color: "#aaaaaa" }}>…</span>
                   ) : (
-                    <button
-                      key={p}
-                      onClick={() => goToPage(p as number)}
+                    <button key={p} onClick={() => goToPage(p as number)}
                       className="w-9 h-9 rounded-lg text-sm font-medium transition-colors"
                       style={{
                         background: p === page ? "#000000" : "transparent",
@@ -242,21 +293,17 @@ export default function PropertySearch() {
                         border: p === page ? "none" : "1px solid #e5e5e5",
                       }}
                       onMouseEnter={(e) => { if (p !== page) (e.currentTarget as HTMLElement).style.background = "#f5f5f5"; }}
-                      onMouseLeave={(e) => { if (p !== page) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                    >
+                      onMouseLeave={(e) => { if (p !== page) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
                       {p}
                     </button>
                   )
                 )}
 
-              <button
-                onClick={() => goToPage(page + 1)}
-                disabled={page >= totalPages}
+              <button onClick={() => goToPage(page + 1)} disabled={page >= totalPages}
                 className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30"
                 style={{ border: "1px solid #e5e5e5", color: "#111111" }}
                 onMouseEnter={(e) => { if (page < totalPages) (e.currentTarget as HTMLElement).style.background = "#f5f5f5"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-              >
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
                 Next <ChevronRight size={15} />
               </button>
             </div>
