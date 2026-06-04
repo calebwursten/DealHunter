@@ -76,7 +76,7 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           parid:     property.id,
-          address:   property.ownerMailingLine1 ?? property.address,
+          address:   property.ownerMailingLine2 ?? property.address,
           city:      property.ownerMailingCity  ?? property.city,
           state:     property.ownerMailingState ?? property.state,
           zip:       property.ownerMailingZip   ?? property.zip,
