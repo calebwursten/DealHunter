@@ -207,6 +207,17 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
               <div>
                 <p className="text-xs mb-2 font-medium" style={{ color: "#888888" }}>Phone Number</p>
 
+                {/* Non-individual owners — PDL can't help; go straight to TPS link */}
+                {property.ownerType !== "Individual" ? (
+                  <a href={tpsUrl} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
+                    style={{ background: "#000000", color: "#ffffff" }}>
+                    <Phone size={14} />
+                    Search TruePeopleSearch
+                    <ExternalLink size={12} />
+                  </a>
+                ) : (
+                  <>
                 {/* Idle — show Find Phone button */}
                 {phoneState === "idle" && (
                   <button onClick={lookupPhone}
@@ -265,6 +276,8 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
                       <ExternalLink size={12} />
                     </a>
                   </div>
+                )}
+                  </>
                 )}
               </div>
 
