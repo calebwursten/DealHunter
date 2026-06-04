@@ -21,8 +21,26 @@ export async function ensureTable() {
       geocoded_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS lists (
+      id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      name       TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS list_properties (
+      list_id    TEXT NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+      parid      TEXT NOT NULL,
+      snapshot   JSONB,
+      added_at   TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (list_id, parid)
+    )
+  `;
   _ready = true;
 }
+
+// ── Geocode cache ─────────────────────────────────────────────────────────────
 
 export interface CachedCoord {
   parid: string;
@@ -57,4 +75,96 @@ export async function storeCachedCoords(
       ON CONFLICT (parid) DO NOTHING
     `;
   }
+}
+
+// ── Lists ─────────────────────────────────────────────────────────────────────
+
+export interface ListRow {
+  id: string;
+  name: string;
+  count: number;
+  created_at: string;
+}
+
+export async function getLists(): Promise<ListRow[]> {
+  const sql = getSql();
+  if (!sql) return [];
+  await ensureTable();
+  const rows = (await sql`
+    SELECT l.id, l.name, l.created_at,
+           COUNT(lp.parid)::int AS count
+    FROM   lists l
+    LEFT JOIN list_properties lp ON lp.list_id = l.id
+    GROUP BY l.id, l.name, l.created_at
+    ORDER BY l.created_at ASC
+  `) as unknown as ListRow[];
+  return rows;
+}
+
+export async function getPropertyListIds(parid: string): Promise<string[]> {
+  const sql = getSql();
+  if (!sql) return [];
+  await ensureTable();
+  const rows = (await sql`
+    SELECT list_id FROM list_properties WHERE parid = ${parid}
+  `) as unknown as { list_id: string }[];
+  return rows.map((r) => r.list_id);
+}
+
+export async function createList(name: string): Promise<ListRow> {
+  const sql = getSql();
+  if (!sql) throw new Error("No database configured");
+  await ensureTable();
+  const rows = (await sql`
+    INSERT INTO lists (name) VALUES (${name})
+    RETURNING id, name, created_at
+  `) as unknown as Omit<ListRow, "count">[];
+  return { ...rows[0], count: 0 };
+}
+
+export async function deleteList(id: string): Promise<void> {
+  const sql = getSql();
+  if (!sql) return;
+  await ensureTable();
+  await sql`DELETE FROM lists WHERE id = ${id}`;
+}
+
+export async function addToList(
+  listId: string,
+  parid: string,
+  snapshot: unknown
+): Promise<void> {
+  const sql = getSql();
+  if (!sql) return;
+  await ensureTable();
+  await sql`
+    INSERT INTO list_properties (list_id, parid, snapshot)
+    VALUES (${listId}, ${parid}, ${JSON.stringify(snapshot)})
+    ON CONFLICT (list_id, parid) DO NOTHING
+  `;
+}
+
+export async function removeFromList(
+  listId: string,
+  parid: string
+): Promise<void> {
+  const sql = getSql();
+  if (!sql) return;
+  await ensureTable();
+  await sql`
+    DELETE FROM list_properties WHERE list_id = ${listId} AND parid = ${parid}
+  `;
+}
+
+export async function getListProperties(listId: string): Promise<unknown[]> {
+  const sql = getSql();
+  if (!sql) return [];
+  await ensureTable();
+  const rows = (await sql`
+    SELECT snapshot
+    FROM   list_properties
+    WHERE  list_id = ${listId}
+    ORDER  BY added_at DESC
+  `) as unknown as { snapshot: unknown }[];
+  return rows.map((r) => r.snapshot);
 }
