@@ -18,8 +18,8 @@ const MapView = dynamic(() => import("@/components/MapView"), {
   ),
 });
 
-const PAGE_SIZE  = 25;
-const MAP_PAGE   = 500; // records per CKAN request in map mode
+const PAGE_SIZE = 25;
+const MAP_PAGE  = 500;
 
 const SUGGESTIONS = [
   "Squirrel Hill Pittsburgh",
@@ -28,6 +28,9 @@ const SUGGESTIONS = [
   "Lawrenceville 15201",
   "Oakland Pittsburgh",
 ];
+
+type OccupancyFilter = "" | "owner" | "non-owner";
+type TypeFilter      = "single" | "multi" | "lot";
 
 export default function PropertySearch() {
   const [query, setQuery]           = useState("");
@@ -39,13 +42,27 @@ export default function PropertySearch() {
   const [view, setView]             = useState<"list" | "map">("list");
   const [isPending, startTransition] = useTransition();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
-  // Changes on every new search — tells MapView to wipe state and start fresh
-  const [mapSearchKey, setMapSearchKey] = useState(0);
+  const [mapSearchKey, setMapSearchKey]          = useState(0);
   const mapAbortRef = useRef<AbortController | null>(null);
 
-  // ── List view — single paginated fetch ────────────────────────────────────
-  function fetchListPage(q: string, pageNum: number) {
-    const url = `/api/search?q=${encodeURIComponent(q)}&limit=${PAGE_SIZE}&offset=${(pageNum - 1) * PAGE_SIZE}`;
+  // ── Filter state ──────────────────────────────────────────────────────────
+  const [ownerFilter, setOwnerFilter] = useState<OccupancyFilter>("");
+  const [typeFilter, setTypeFilter]   = useState<Set<TypeFilter>>(new Set<TypeFilter>());
+
+  // ── URL builder ───────────────────────────────────────────────────────────
+  function buildUrl(q: string, limit: number, offset: number,
+                    owner: OccupancyFilter, types: Set<TypeFilter>): string {
+    const p = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
+    if (owner) p.set("occupancy", owner);
+    const ta = [...types];
+    if (ta.length > 0) p.set("types", ta.join(","));
+    return `/api/search?${p}`;
+  }
+
+  // ── List view ─────────────────────────────────────────────────────────────
+  function fetchListPage(q: string, pageNum: number,
+                         owner = ownerFilter, types = typeFilter) {
+    const url = buildUrl(q, PAGE_SIZE, (pageNum - 1) * PAGE_SIZE, owner, types);
     setError("");
     setSearched(true);
     startTransition(async () => {
@@ -63,9 +80,9 @@ export default function PropertySearch() {
     });
   }
 
-  // ── Map view — stream all pages into MapView progressively ────────────────
-  async function fetchAllMapPages(q: string) {
-    // Cancel any previous paginating run
+  // ── Map view — paginate all results ──────────────────────────────────────
+  async function fetchAllMapPages(q: string,
+                                  owner = ownerFilter, types = typeFilter) {
     mapAbortRef.current?.abort();
     const ac = new AbortController();
     mapAbortRef.current = ac;
@@ -74,7 +91,6 @@ export default function PropertySearch() {
     setTotalCount(0);
     setSearched(true);
     setError("");
-    // Increment key → MapView clears markers + resets geocode state
     setMapSearchKey((k) => k + 1);
 
     let offset = 0;
@@ -83,36 +99,27 @@ export default function PropertySearch() {
 
     try {
       while (offset < total && !ac.signal.aborted) {
-        const res  = await fetch(
-          `/api/search?q=${encodeURIComponent(q)}&limit=${MAP_PAGE}&offset=${offset}`,
-          { signal: ac.signal }
-        );
+        const res  = await fetch(buildUrl(q, MAP_PAGE, offset, owner, types), { signal: ac.signal });
         const data = await res.json();
         total = data.total ?? 0;
-        const page = (data.records ?? []) as WPRDCRecord[];
-
-        all = [...all, ...page];
+        const pg = (data.records ?? []) as WPRDCRecord[];
+        all = [...all, ...pg];
         setResults([...all]);
         setTotalCount(total);
-
-        if (page.length < MAP_PAGE) break; // last page
+        if (pg.length < MAP_PAGE) break;
         offset += MAP_PAGE;
       }
     } catch (e) {
-      if ((e as { name?: string }).name !== "AbortError") {
+      if ((e as { name?: string }).name !== "AbortError")
         setError("Could not reach the Pittsburgh property database. Try again.");
-      }
     }
   }
 
   // ── Unified entry point ───────────────────────────────────────────────────
   function runSearch(q: string, currentView = view) {
     if (!q.trim()) return;
-    if (currentView === "map") {
-      fetchAllMapPages(q);
-    } else {
-      fetchListPage(q, 1);
-    }
+    if (currentView === "map") fetchAllMapPages(q);
+    else fetchListPage(q, 1);
   }
 
   function goToPage(p: number) {
@@ -123,20 +130,39 @@ export default function PropertySearch() {
   function switchView(next: "list" | "map") {
     setView(next);
     if (searched && query) {
-      if (next === "map") {
-        fetchAllMapPages(query);
-      } else {
-        fetchListPage(query, 1);
-      }
+      if (next === "map") fetchAllMapPages(query);
+      else fetchListPage(query, 1);
     }
   }
+
+  // ── Filter handlers ───────────────────────────────────────────────────────
+  function applyOwnerFilter(val: OccupancyFilter) {
+    setOwnerFilter(val);
+    if (searched && query) {
+      if (view === "map") fetchAllMapPages(query, val, typeFilter);
+      else fetchListPage(query, 1, val, typeFilter);
+    }
+  }
+
+  function toggleTypeFilter(val: TypeFilter) {
+    const next = new Set(typeFilter);
+    if (next.has(val)) next.delete(val); else next.add(val);
+    setTypeFilter(next);
+    if (searched && query) {
+      if (view === "map") fetchAllMapPages(query, ownerFilter, next);
+      else fetchListPage(query, 1, ownerFilter, next);
+    }
+  }
+
+  const activeFilterCount =
+    (ownerFilter ? 1 : 0) + (typeFilter.size > 0 ? 1 : 0);
 
   const properties = results.map(wprdcToProperty);
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div>
-      {/* ── Search bar ── */}
+      {/* ── Search bar + filters ── */}
       <div className="rounded-xl p-4 md:p-5 mb-5 md:mb-6" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#f0f0f0", color: "#000000" }}>
@@ -144,6 +170,8 @@ export default function PropertySearch() {
           </span>
           <span className="text-xs" style={{ color: "#888888" }}>140,000+ properties · updated daily</span>
         </div>
+
+        {/* Input row */}
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1 relative">
             <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#888888" }} />
@@ -165,6 +193,59 @@ export default function PropertySearch() {
             Search
           </button>
         </div>
+
+        {/* ── Filters ── */}
+        <div className="mt-3 pt-3 flex flex-wrap gap-2 items-center" style={{ borderTop: "1px solid #f0f0f0" }}>
+          <span className="text-xs font-medium" style={{ color: "#888888" }}>Filters</span>
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => { applyOwnerFilter(""); setTypeFilter(new Set()); }}
+              className="text-xs px-2 py-0.5 rounded-full"
+              style={{ background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca" }}>
+              Clear {activeFilterCount}
+            </button>
+          )}
+
+          {/* Occupancy */}
+          <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
+            {([
+              ["", "All Owners"],
+              ["owner", "Owner-Occupied"],
+              ["non-owner", "Non-Owner"],
+            ] as [OccupancyFilter, string][]).map(([val, label], i) => (
+              <button key={val} onClick={() => applyOwnerFilter(val)}
+                className="px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+                style={{
+                  background: ownerFilter === val ? "#000000" : "#fff",
+                  color:      ownerFilter === val ? "#ffffff" : "#555555",
+                  borderLeft: i > 0 ? "1px solid #e5e5e5" : undefined,
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Property type */}
+          <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
+            {([
+              ["single", "Single Family"],
+              ["multi",  "Multifamily"],
+              ["lot",    "Lot"],
+            ] as [TypeFilter, string][]).map(([val, label], i) => (
+              <button key={val} onClick={() => toggleTypeFilter(val)}
+                className="px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+                style={{
+                  background: typeFilter.has(val) ? "#000000" : "#fff",
+                  color:      typeFilter.has(val) ? "#ffffff" : "#555555",
+                  borderLeft: i > 0 ? "1px solid #e5e5e5" : undefined,
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Suggestions (pre-search only) */}
         {!searched && (
           <div className="flex gap-2 mt-3 flex-wrap">
             <span className="text-xs self-center" style={{ color: "#888888" }}>Try:</span>
@@ -214,7 +295,7 @@ export default function PropertySearch() {
         </div>
       )}
 
-      {/* ── Loading skeleton (list view only) ── */}
+      {/* ── Loading skeleton ── */}
       {isPending && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -241,12 +322,11 @@ export default function PropertySearch() {
         <div className="rounded-xl p-12 text-center" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
           <Building2 size={40} className="mx-auto mb-3" style={{ color: "#e5e5e5" }} />
           <p className="font-medium" style={{ color: "#555555" }}>No properties found</p>
-          <p className="text-sm mt-1" style={{ color: "#888888" }}>Try a street name, ZIP code, or neighborhood</p>
+          <p className="text-sm mt-1" style={{ color: "#888888" }}>Try adjusting your filters or search a different area</p>
         </div>
       )}
 
-      {/* ── Map view ── hide (not unmount) when a property is selected so
-           markers survive the modal open/close cycle */}
+      {/* ── Map view — hidden (not unmounted) when modal is open ── */}
       {searched && !isPending && view === "map" && (
         <div style={{ display: selectedProperty ? "none" : "block" }}>
           <MapView

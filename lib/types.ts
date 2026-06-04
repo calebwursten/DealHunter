@@ -4,7 +4,7 @@ export interface Property {
   city: string;
   state: string;
   zip: string;
-  propertyType: "Single Family" | "Multi-Family" | "Condo" | "Commercial";
+  propertyType: "Single Family" | "Multi-Family" | "Condo" | "Commercial" | "Lot";
   beds: number;
   baths: number;
   sqft: number;

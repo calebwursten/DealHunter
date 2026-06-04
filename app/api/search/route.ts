@@ -9,7 +9,6 @@ function esc(s: string) {
 
 const SUFFIX = /\b(STREET|ST|AVENUE|AVE|BOULEVARD|BLVD|ROAD|RD|DRIVE|DR|LANE|LN|WAY|COURT|CT|PLACE|PL|TERRACE|TER|CIRCLE|CIR|HIGHWAY|HWY|PARKWAY|PKWY|PIKE|ALLEY|ALY)\b\.?/gi;
 
-// Pittsburgh neighbourhood → primary ZIP (used when NEIGHDESC has no real name)
 const NEIGHBORHOOD_ZIP: Record<string, string> = {
   "lawrenceville":        "15201",
   "upper lawrenceville":  "15201",
@@ -106,69 +105,110 @@ async function runSQL(sql: string) {
 }
 
 async function countSQL(where: string): Promise<number> {
-  const rows = await runSQL(
-    `SELECT COUNT(*) as n FROM "${RES_ID}" WHERE ${where}`
-  );
+  const rows = await runSQL(`SELECT COUNT(*) as n FROM "${RES_ID}" WHERE ${where}`);
   if (!rows) return 0;
   return parseInt(String((rows as { n: string }[])[0]?.n ?? "0"), 10);
 }
 
+// ── Filter SQL constants ───────────────────────────────────────────────────────
+const LOT_COND =
+  `("USEDESC" ILIKE '%VACANT%' OR ("USEDESC" ILIKE '%LAND%' AND "USEDESC" NOT ILIKE '%HIGHLAND%'))`;
+
+const MULTI_COND =
+  `("USEDESC" ILIKE '%TWO FAMILY%' OR "USEDESC" ILIKE '%MULTI%' OR ` +
+  `"USEDESC" ILIKE '%APARTMENT%' OR "USEDESC" ILIKE '%TRIPLEX%' OR ` +
+  `"USEDESC" ILIKE '%FOUR FAMILY%' OR "USEDESC" ILIKE '%FIVE FAMILY%')`;
+
+// Single-family = not a lot, not multi, not condo, not commercial/industrial
+const SINGLE_COND =
+  `(NOT ${LOT_COND} AND NOT ${MULTI_COND} AND ` +
+  `"USEDESC" NOT ILIKE '%CONDO%' AND ` +
+  `"CLASSDESC" NOT ILIKE '%COMMERCIAL%' AND ` +
+  `"CLASSDESC" NOT ILIKE '%INDUSTRIAL%' AND ` +
+  `"CLASSDESC" NOT ILIKE '%GOVERNMENTAL%')`;
+
 export async function GET(req: NextRequest) {
-  const raw    = (req.nextUrl.searchParams.get("q") ?? "").trim();
-  const limit  = Math.min(parseInt(req.nextUrl.searchParams.get("limit")  ?? "25"), 500);
-  const offset = Math.max(parseInt(req.nextUrl.searchParams.get("offset") ?? "0"),  0);
+  const raw       = (req.nextUrl.searchParams.get("q")         ?? "").trim();
+  const limit     = Math.min(parseInt(req.nextUrl.searchParams.get("limit")     ?? "25"),  500);
+  const offset    = Math.max(parseInt(req.nextUrl.searchParams.get("offset")    ?? "0"),   0);
+  const occupancy =          req.nextUrl.searchParams.get("occupancy") ?? ""; // "owner"|"non-owner"|""
+  const typesRaw  =          req.nextUrl.searchParams.get("types")     ?? ""; // "single,multi,lot"
+  const typeList  = typesRaw.split(",").filter(Boolean);
 
   if (!raw) return Response.json({ records: [], total: 0 });
 
+  // ── Build filter SQL ──────────────────────────────────────────────────────
+  const filterParts: string[] = [];
+
+  if (occupancy === "owner") {
+    filterParts.push(`"HOMESTEADFLAG" = 'HOM'`);
+  } else if (occupancy === "non-owner") {
+    filterParts.push(`("HOMESTEADFLAG" IS NULL OR "HOMESTEADFLAG" != 'HOM')`);
+  }
+
+  // Type filter — OR between selected types; skip entirely if all 3 selected (= no filter)
+  if (typeList.length > 0 && typeList.length < 3) {
+    const typeParts: string[] = [];
+    if (typeList.includes("lot"))    typeParts.push(LOT_COND);
+    if (typeList.includes("multi"))  typeParts.push(MULTI_COND);
+    if (typeList.includes("single")) typeParts.push(SINGLE_COND);
+    if (typeParts.length > 0) filterParts.push(`(${typeParts.join(" OR ")})`);
+  }
+
+  const filterSql = filterParts.join(" AND ");
+
+  /** Append active filter conditions to any base WHERE clause. */
+  function withFilters(base: string): string {
+    if (!filterSql) return base;
+    if (!base)      return filterSql;
+    return `(${base}) AND ${filterSql}`;
+  }
+
+  // ── Parse query ───────────────────────────────────────────────────────────
   const comma   = raw.indexOf(",");
   const addrRaw = comma >= 0 ? raw.slice(0, comma).trim() : raw;
   const cityRaw = comma >= 0 ? raw.slice(comma + 1).trim() : "";
   const addrUp  = addrRaw.toUpperCase();
   const cityUp  = cityRaw.toUpperCase();
 
-  let where = "";
+  let baseWhere = "";
 
   // ── 1. ZIP code ───────────────────────────────────────────────────────────
   if (/^\d{5}$/.test(raw)) {
-    where = `"PROPERTYZIP" = '${esc(raw)}'`;
+    baseWhere = `"PROPERTYZIP" = '${esc(raw)}'`;
   }
 
-  // ── 2. House number + street: "123 walnut st" ─────────────────────────────
-  if (!where) {
+  // ── 2. House number + street ──────────────────────────────────────────────
+  if (!baseWhere) {
     const numMatch = addrRaw.match(/^(\d+)\s+(.+)/);
     if (numMatch) {
       const num = esc(numMatch[1]);
       SUFFIX.lastIndex = 0;
       const kw = esc(numMatch[2].toUpperCase().replace(SUFFIX, "").trim());
-      where = `"PROPERTYHOUSENUM" = '${num}' AND "PROPERTYADDRESS" ILIKE '%${kw}%'`;
+      baseWhere = `"PROPERTYHOUSENUM" = '${num}' AND "PROPERTYADDRESS" ILIKE '%${kw}%'`;
       if (cityUp)
-        where += ` AND "PROPERTYCITY" ILIKE '%${esc(cityUp)}%'`;
+        baseWhere += ` AND "PROPERTYCITY" ILIKE '%${esc(cityUp)}%'`;
     }
   }
 
-  // ── 3. Street name — ONLY when query contains a street-type suffix ─────────
-  // "walnut street" or "garfield ave" → yes
-  // "garfield" or "shadyside" → NO (those are neighbourhoods, handled in step 4)
-  if (!where) {
+  // ── 3. Street name (only when suffix word present) ────────────────────────
+  if (!baseWhere) {
     const hasSuffix = new RegExp(SUFFIX.source, "i").test(addrUp);
     if (hasSuffix) {
       SUFFIX.lastIndex = 0;
       const kw = esc(addrUp.replace(SUFFIX, "").trim());
       if (kw.length >= 2) {
-        where = `"PROPERTYADDRESS" ILIKE '%${kw}%'`;
+        baseWhere = `"PROPERTYADDRESS" ILIKE '%${kw}%'`;
         if (cityUp)
-          where += ` AND ("PROPERTYCITY" ILIKE '%${esc(cityUp)}%' OR "MUNIDESC" ILIKE '%${esc(cityUp)}%')`;
+          baseWhere += ` AND ("PROPERTYCITY" ILIKE '%${esc(cityUp)}%' OR "MUNIDESC" ILIKE '%${esc(cityUp)}%')`;
       }
     }
   }
 
-  // ── 4. Neighbourhood / municipality (no house number, no street suffix) ────
-  // Strategy:
-  //   4a. NEIGHDESC ILIKE '%keyword%'  — catches names stored in the DB (e.g. SHADYSIDE)
-  //   4b. PROPERTYZIP = known_zip      — catches neighbourhoods without NEIGHDESC names (e.g. GARFIELD → 15224)
-  //   4c. MUNIDESC   ILIKE '%keyword%' — catches borough/township names (e.g. MOUNT LEBANON TOWNSHIP)
-  // All three COUNT queries run in parallel; first non-zero result wins.
-  if (!where && addrRaw.length >= 3) {
+  // ── 4. Neighbourhood / municipality ──────────────────────────────────────
+  // Parallel COUNT queries to discover which match type wins; filters are NOT
+  // applied here — we're just testing whether the area exists in the data.
+  if (!baseWhere && addrRaw.length >= 3) {
     const kw      = esc(addrUp);
     const zipCode = NEIGHBORHOOD_ZIP[addrRaw.toLowerCase()];
 
@@ -186,45 +226,46 @@ export async function GET(req: NextRequest) {
       countSQL(muniWhere),
     ]);
 
-    if      (neighCnt > 0)              where = neighWhere;
-    else if (zipWhere && zipCnt > 0)    where = zipWhere;
-    else if (muniCnt  > 0)              where = muniWhere;
+    if      (neighCnt > 0)           baseWhere = neighWhere;
+    else if (zipWhere && zipCnt > 0) baseWhere = zipWhere;
+    else if (muniCnt  > 0)           baseWhere = muniWhere;
   }
 
-  // ── SQL path — data + total COUNT in parallel ──────────────────────────────
-  if (where) {
+  // ── SQL path — apply filters then fetch data + count in parallel ──────────
+  if (baseWhere) {
+    const where    = withFilters(baseWhere);
     const orderBy  = `ORDER BY "FAIRMARKETTOTAL" DESC NULLS LAST`;
     const dataSql  = `SELECT * FROM "${RES_ID}" WHERE ${where} ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
     const countSql = `SELECT COUNT(*) as n FROM "${RES_ID}" WHERE ${where}`;
 
-    const [records, countRows] = await Promise.all([
-      runSQL(dataSql),
-      runSQL(countSql),
-    ]);
+    const [records, countRows] = await Promise.all([runSQL(dataSql), runSQL(countSql)]);
 
     if (records !== null) {
-      const total = parseInt(
-        String((countRows as { n: string }[])?.[0]?.n ?? 0),
-        10
-      );
+      const total = parseInt(String((countRows as { n: string }[])?.[0]?.n ?? 0), 10);
       return Response.json({ records, total, mode: "sql" });
     }
   }
 
-  // ── 5. Full-text fallback ──────────────────────────────────────────────────
-  const params = new URLSearchParams({
-    resource_id: RES_ID,
-    q: raw,
-    limit: String(limit),
-    offset: String(offset),
-  });
-  const res  = await fetch(`${CKAN}/datastore_search?${params}`, {
-    next: { revalidate: 300 },
-  });
+  // ── 5. Full-text fallback ─────────────────────────────────────────────────
+  // When filters are active, datastore_search can't apply SQL conditions,
+  // so fall back to a simple ILIKE query with filters applied.
+  if (filterSql) {
+    const where = withFilters(
+      `("PROPERTYADDRESS" ILIKE '%${esc(raw)}%' OR "PROPERTYCITY" ILIKE '%${esc(raw)}%')`
+    );
+    const [records, countRows] = await Promise.all([
+      runSQL(`SELECT * FROM "${RES_ID}" WHERE ${where} ORDER BY "FAIRMARKETTOTAL" DESC NULLS LAST LIMIT ${limit} OFFSET ${offset}`),
+      runSQL(`SELECT COUNT(*) as n FROM "${RES_ID}" WHERE ${where}`),
+    ]);
+    if (records !== null) {
+      const total = parseInt(String((countRows as { n: string }[])?.[0]?.n ?? 0), 10);
+      return Response.json({ records, total, mode: "sql-fallback" });
+    }
+  }
+
+  // Pure full-text — no active filters
+  const params = new URLSearchParams({ resource_id: RES_ID, q: raw, limit: String(limit), offset: String(offset) });
+  const res  = await fetch(`${CKAN}/datastore_search?${params}`, { next: { revalidate: 300 } });
   const data = await res.json();
-  return Response.json({
-    records: data.result?.records ?? [],
-    total:   data.result?.total   ?? 0,
-    mode: "fulltext",
-  });
+  return Response.json({ records: data.result?.records ?? [], total: data.result?.total ?? 0, mode: "fulltext" });
 }

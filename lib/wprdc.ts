@@ -169,22 +169,27 @@ function fmt(n: number | null): string {
   return "$" + n.toLocaleString("en-US");
 }
 
-function mapPropertyType(usedesc: string): Property["propertyType"] {
+function mapPropertyType(usedesc: string, classdesc = ""): Property["propertyType"] {
   const u = (usedesc ?? "").toUpperCase();
+  const c = (classdesc ?? "").toUpperCase();
+  // Vacant / land parcels — check before other categories
+  if (u.includes("VACANT") || (u.includes("LAND") && !u.includes("HIGHLAND")))
+    return "Lot";
   if (u.includes("CONDO")) return "Condo";
   if (
     u.includes("TWO FAMILY") ||
     u.includes("MULTI") ||
     u.includes("APARTMENT") ||
     u.includes("TRIPLEX") ||
-    u.includes("FOUR")
+    u.includes("FOUR FAMILY") ||
+    u.includes("FIVE FAMILY") ||
+    u.includes("SIX FAMILY")
   )
     return "Multi-Family";
   if (
-    u.includes("COMMERCIAL") ||
-    u.includes("OFFICE") ||
-    u.includes("STORE") ||
-    u.includes("INDUSTRIAL")
+    c.includes("COMMERCIAL") || c.includes("INDUSTRIAL") ||
+    u.includes("COMMERCIAL") || u.includes("OFFICE") ||
+    u.includes("STORE")       || u.includes("INDUSTRIAL")
   )
     return "Commercial";
   return "Single Family";
@@ -257,7 +262,7 @@ export function wprdcToProperty(rec: WPRDCRecord): Property {
     city:          rec.PROPERTYCITY ?? "Pittsburgh",
     state:         rec.PROPERTYSTATE ?? "PA",
     zip:           rec.PROPERTYZIP ?? "",
-    propertyType:  mapPropertyType(rec.USEDESC ?? ""),
+    propertyType:  mapPropertyType(rec.USEDESC ?? "", rec.CLASSDESC ?? ""),
     beds:          rec.BEDROOMS ?? 0,
     baths:         rec.FULLBATHS ?? 0,
     sqft:          rec.FINISHEDLIVINGAREA ?? 0,
