@@ -71,7 +71,6 @@ const NEIGHBORHOOD_ZIP: Record<string, string> = {
   "friendship":           "15224",
   "morningside":          "15224",
   "brookline":            "15226",
-  "beechview":            "15216",
   "shadyside":            "15232",
   "manchester":           "15233",
   "chateau":              "15233",
