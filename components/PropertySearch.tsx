@@ -245,14 +245,17 @@ export default function PropertySearch() {
         </div>
       )}
 
-      {/* ── Map view ── */}
+      {/* ── Map view ── hide (not unmount) when a property is selected so
+           markers survive the modal open/close cycle */}
       {searched && !isPending && view === "map" && (
-        <MapView
-          properties={properties}
-          searchKey={mapSearchKey}
-          totalCount={totalCount}
-          onSelect={setSelectedProperty}
-        />
+        <div style={{ display: selectedProperty ? "none" : "block" }}>
+          <MapView
+            properties={properties}
+            searchKey={mapSearchKey}
+            totalCount={totalCount}
+            onSelect={setSelectedProperty}
+          />
+        </div>
       )}
 
       {/* ── List view ── */}

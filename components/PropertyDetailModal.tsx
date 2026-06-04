@@ -78,7 +78,7 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
   }[property.equityLevel];
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] flex justify-end" onClick={onClose}>
       <div
         className="absolute inset-0"
         style={{ background: "rgba(0,0,0,0.45)" }}
