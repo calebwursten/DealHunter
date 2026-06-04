@@ -12,11 +12,11 @@ interface PhoneInput {
   ownerType?: string;
 }
 
-// E.164 "+14125551234" or bare "4125551234" → "(412) 555-1234"
 function fmt(raw: string): string {
+  if (typeof raw !== "string") return "";
   const d = raw.replace(/\D/g, "");
   const digits = d.length === 11 && d[0] === "1" ? d.slice(1) : d;
-  if (digits.length !== 10) return raw;
+  if (digits.length !== 10) return "";
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
@@ -36,7 +36,6 @@ function buildTpsUrl({ address, city, state, zip, ownerName, ownerType }: PhoneI
   );
 }
 
-// OWNERDESC fallback values that are NOT real names
 const NON_NAME = new Set(["REGULAR", "FIDUCIARY", "GOVERNMENT", "EXEMPT", "OTHER", ""]);
 
 export async function POST(req: Request) {
@@ -48,7 +47,7 @@ export async function POST(req: Request) {
     parid, ownerName, ownerType, address, city, state, zip, step: "",
   };
 
-  // ── 1. DB cache (positive hits only) ────────────────────────────────────────
+  // ── 1. DB cache (positive hits only) ─────────────────────────────────────
   if (parid) {
     const cached = await getCachedPhone(parid);
     if (cached !== null && cached.length > 0) {
@@ -57,7 +56,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── 2. Require API key ───────────────────────────────────────────────────────
+  // ── 2. Require API key ────────────────────────────────────────────────────
   const apiKey = process.env.PDL_API_KEY;
   if (!apiKey) {
     debug.step = "no_api_key";
@@ -68,13 +67,13 @@ export async function POST(req: Request) {
     });
   }
 
-  // ── 3. Skip non-individuals ──────────────────────────────────────────────────
+  // ── 3. Skip non-individuals ───────────────────────────────────────────────
   if (ownerType !== "Individual") {
     debug.step = `skipped:${ownerType}`;
     return Response.json({ phones: [], lookupUrl, debug });
   }
 
-  // ── 4. Skip if name is a known non-name OWNERDESC fallback ──────────────────
+  // ── 4. Skip if name is a known OWNERDESC placeholder, not a real name ────
   const name = (ownerName ?? "").trim().toUpperCase();
   if (!name || NON_NAME.has(name)) {
     debug.step = "no_usable_name";
@@ -85,16 +84,14 @@ export async function POST(req: Request) {
     });
   }
 
-  // ── 5. PDL Person Enrichment ─────────────────────────────────────────────────
+  // ── 5. PDL Person Enrichment ──────────────────────────────────────────────
   try {
     const location = [city, state, zip].filter(Boolean).join(" ");
     const pdlPayload = {
       name,
       street_address: address || undefined,
       location:       location || undefined,
-      // Only charge a credit when phone_numbers are present
       required:       "phone_numbers",
-      // Lowered from 5 → 2 to catch more real matches
       min_likelihood: 2,
     };
     debug.pdlPayload = pdlPayload;
@@ -129,9 +126,21 @@ export async function POST(req: Request) {
       return Response.json({ phones: [], lookupUrl, debug });
     }
 
-    const data = await res.json();
-    const raw: string[] = data.data?.phone_numbers ?? [];
-    const phones = [...new Set(raw.map(fmt))].filter(Boolean);
+    // Parse response — phone_numbers may be an array, a string, or absent
+    const data = await res.json() as Record<string, unknown>;
+    debug.pdlRaw = data; // log the full PDL response so we can inspect it
+
+    const personData = data.data as Record<string, unknown> | null | undefined;
+    const rawPhones  = personData?.phone_numbers;
+
+    // Normalise: handle array, single string, or missing
+    const phoneList: string[] = Array.isArray(rawPhones)
+      ? rawPhones
+      : typeof rawPhones === "string" && rawPhones
+        ? [rawPhones]
+        : [];
+
+    const phones = [...new Set(phoneList.map(fmt))].filter(Boolean);
     debug.step = `pdl_ok:${phones.length}`;
 
     if (parid && phones.length > 0) storeCachedPhone(parid, phones).catch(() => {});
