@@ -37,6 +37,13 @@ export async function ensureTable() {
       PRIMARY KEY (list_id, parid)
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS phone_cache (
+      parid      TEXT PRIMARY KEY,
+      phones     TEXT[] NOT NULL DEFAULT '{}',
+      cached_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
   _ready = true;
 }
 
@@ -167,4 +174,30 @@ export async function getListProperties(listId: string): Promise<unknown[]> {
     ORDER  BY added_at DESC
   `) as unknown as { snapshot: unknown }[];
   return rows.map((r) => r.snapshot);
+}
+
+// ── Phone cache ───────────────────────────────────────────────────────────────
+
+export async function getCachedPhone(parid: string): Promise<string[] | null> {
+  const sql = getSql();
+  if (!sql) return null;
+  await ensureTable();
+  const rows = (await sql`
+    SELECT phones FROM phone_cache
+    WHERE  parid     = ${parid}
+    AND    cached_at > NOW() - INTERVAL '30 days'
+  `) as unknown as { phones: string[] }[];
+  return rows.length > 0 ? rows[0].phones : null;
+}
+
+export async function storeCachedPhone(parid: string, phones: string[]): Promise<void> {
+  const sql = getSql();
+  if (!sql) return;
+  await ensureTable();
+  await sql`
+    INSERT INTO phone_cache (parid, phones)
+    VALUES (${parid}, ${phones})
+    ON CONFLICT (parid)
+    DO UPDATE SET phones = ${phones}, cached_at = NOW()
+  `;
 }
