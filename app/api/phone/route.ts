@@ -36,18 +36,19 @@ function buildTpsUrl({ address, city, state, zip, ownerName, ownerType }: PhoneI
   );
 }
 
+// OWNERDESC fallback values that are NOT real names
+const NON_NAME = new Set(["REGULAR", "FIDUCIARY", "GOVERNMENT", "EXEMPT", "OTHER", ""]);
+
 export async function POST(req: Request) {
   const body      = (await req.json()) as PhoneInput;
   const { parid, address, city, state, zip, ownerName, ownerType } = body;
   const lookupUrl = buildTpsUrl(body);
 
-  // Always-returned debug envelope — check in DevTools > Network > Response
   const debug: Record<string, unknown> = {
     parid, ownerName, ownerType, address, city, state, zip, step: "",
   };
 
-  // ── 1. DB cache — only use if phones were previously found ───────────────
-  // (empty-array entries from old code are now treated as cache misses)
+  // ── 1. DB cache (positive hits only) ────────────────────────────────────────
   if (parid) {
     const cached = await getCachedPhone(parid);
     if (cached !== null && cached.length > 0) {
@@ -56,85 +57,87 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── 2. Require API key ────────────────────────────────────────────────────
+  // ── 2. Require API key ───────────────────────────────────────────────────────
   const apiKey = process.env.PDL_API_KEY;
   if (!apiKey) {
     debug.step = "no_api_key";
     return Response.json({
-      phones: [],
-      lookupUrl,
-      error: "PDL_API_KEY not set — add it in Vercel environment variables",
+      phones: [], lookupUrl,
+      error: "PDL_API_KEY not configured in Vercel environment variables",
       debug,
     });
   }
 
-  // ── 3. PDL is individual-only — skip entities ─────────────────────────────
+  // ── 3. Skip non-individuals ──────────────────────────────────────────────────
   if (ownerType !== "Individual") {
-    debug.step = `skipped_non_individual:${ownerType}`;
+    debug.step = `skipped:${ownerType}`;
     return Response.json({ phones: [], lookupUrl, debug });
   }
 
-  // ── 4. PDL Person Enrichment ──────────────────────────────────────────────
+  // ── 4. Skip if name is a known non-name OWNERDESC fallback ──────────────────
+  const name = (ownerName ?? "").trim().toUpperCase();
+  if (!name || NON_NAME.has(name)) {
+    debug.step = "no_usable_name";
+    return Response.json({
+      phones: [], lookupUrl,
+      error: "Owner name unavailable — use the manual search link",
+      debug,
+    });
+  }
+
+  // ── 5. PDL Person Enrichment ─────────────────────────────────────────────────
   try {
     const location = [city, state, zip].filter(Boolean).join(" ");
     const pdlPayload = {
-      name:            ownerName,
-      street_address:  address,
-      location,
-      required:        "phone_numbers",
-      min_likelihood:  5,
+      name,
+      street_address: address || undefined,
+      location:       location || undefined,
+      // Only charge a credit when phone_numbers are present
+      required:       "phone_numbers",
+      // Lowered from 5 → 2 to catch more real matches
+      min_likelihood: 2,
     };
     debug.pdlPayload = pdlPayload;
 
     const res = await fetch("https://api.peopledatalabs.com/v5/person/enrich", {
-      method:  "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Api-Key":    apiKey,
-      },
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
       body: JSON.stringify(pdlPayload),
       signal: AbortSignal.timeout(10_000),
     });
 
     debug.pdlHttpStatus = res.status;
 
-    // 404 = no match (not charged when required field missing) — don't cache
     if (res.status === 404) {
       debug.step = "pdl_no_match";
       return Response.json({ phones: [], lookupUrl, debug });
     }
-
     if (res.status === 402) {
       debug.step = "pdl_credits_exhausted";
       return Response.json({ phones: [], lookupUrl, error: "PDL credits exhausted", debug });
     }
-
     if (res.status === 401) {
       const txt = await res.text();
       debug.step = "pdl_unauthorized";
       debug.pdlError = txt;
-      return Response.json({ phones: [], lookupUrl, error: "PDL API key rejected", debug });
+      return Response.json({ phones: [], lookupUrl, error: "PDL API key rejected — check Vercel env", debug });
     }
-
     if (!res.ok) {
       const txt = await res.text();
       debug.step = `pdl_error_${res.status}`;
       debug.pdlError = txt;
-      console.error("PDL error", res.status, txt);
       return Response.json({ phones: [], lookupUrl, debug });
     }
 
     const data = await res.json();
     const raw: string[] = data.data?.phone_numbers ?? [];
     const phones = [...new Set(raw.map(fmt))].filter(Boolean);
-    debug.step = `pdl_ok:${phones.length}_phones`;
+    debug.step = `pdl_ok:${phones.length}`;
 
-    // Cache only positive results — negatives are free to re-query
     if (parid && phones.length > 0) storeCachedPhone(parid, phones).catch(() => {});
 
     return Response.json({ phones, lookupUrl, debug });
   } catch (e) {
-    console.error("PDL fetch error:", e);
     debug.step = `exception:${String(e)}`;
     return Response.json({ phones: [], lookupUrl, debug });
   }

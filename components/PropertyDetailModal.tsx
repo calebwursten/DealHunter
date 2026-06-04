@@ -51,12 +51,16 @@ function buildTpsUrl(p: Property): string {
 export default function PropertyDetailModal({ property, onClose }: Props) {
   const [phoneState, setPhoneState] = useState<"idle" | "loading" | "done">("idle");
   const [phones, setPhones]         = useState<string[]>([]);
+  const [debugStep, setDebugStep]   = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [tpsUrl, setTpsUrl]         = useState("");
 
   // Reset phone state whenever the displayed property changes
   useEffect(() => {
     setPhoneState("idle");
     setPhones([]);
+    setDebugStep("");
+    setPhoneError("");
     if (property) setTpsUrl(buildTpsUrl(property));
   }, [property?.id]);
 
@@ -86,8 +90,11 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
       });
       const data = await res.json();
       setPhones(data.phones ?? []);
-    } catch {
+      setDebugStep(data.debug?.step ?? "");
+      setPhoneError(data.error ?? "");
+    } catch (e) {
       setPhones([]);
+      setDebugStep(`exception:${String(e)}`);
     }
     setPhoneState("done");
   }
@@ -266,7 +273,13 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
                 {phoneState === "done" && phones.length === 0 && (
                   <div>
                     <p className="text-xs mb-2" style={{ color: "#aaaaaa" }}>
-                      Not found automatically — search manually below.
+                      {phoneError
+                        ? phoneError
+                        : debugStep === "pdl_no_match"
+                          ? "Not in People Data Labs — search manually:"
+                          : debugStep === "no_usable_name"
+                            ? "Owner name not available — search by address:"
+                            : "Not found automatically — search manually:"}
                     </p>
                     <a href={tpsUrl} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
