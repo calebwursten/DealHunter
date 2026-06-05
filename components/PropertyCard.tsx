@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MapPin, Phone, Home, Building2, Trees } from "lucide-react";
+import { MapPin, Phone, Home, Building2, Trees, Map } from "lucide-react";
 import { Property } from "@/lib/types";
 
 const equityStyle: Record<string, { bg: string; color: string }> = {
@@ -138,26 +138,50 @@ export default function PropertyCard({ property, onClick }: Props) {
             {property.sqft > 0 ? ` · ${property.sqft.toLocaleString()} sqft` : ""}
             {property.yearBuilt > 0 ? ` · ${property.yearBuilt}` : ""}
           </span>
-          <a
-            href={tpsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            title="Look up owner contact info"
-            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-            style={{ color: "#555555", border: "1px solid #e5e5e5" }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = "#000000";
-              (e.currentTarget as HTMLElement).style.color       = "#000000";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = "#e5e5e5";
-              (e.currentTarget as HTMLElement).style.color       = "#555555";
-            }}
-          >
-            <Phone size={10} />
-            Skip trace
-          </a>
+          <div className="flex items-center gap-2">
+            {/* Google Maps */}
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${property.address}, ${property.city}, ${property.state} ${property.zip}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title="Open in Google Maps"
+              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+              style={{ color: "#555555", border: "1px solid #e5e5e5" }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.borderColor = "#000000";
+                (e.currentTarget as HTMLElement).style.color       = "#000000";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.borderColor = "#e5e5e5";
+                (e.currentTarget as HTMLElement).style.color       = "#555555";
+              }}
+            >
+              <Map size={10} />
+              Maps
+            </a>
+            {/* Skip trace */}
+            <a
+              href={tpsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title="Look up owner contact info"
+              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+              style={{ color: "#555555", border: "1px solid #e5e5e5" }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.borderColor = "#000000";
+                (e.currentTarget as HTMLElement).style.color       = "#000000";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.borderColor = "#e5e5e5";
+                (e.currentTarget as HTMLElement).style.color       = "#555555";
+              }}
+            >
+              <Phone size={10} />
+              Skip trace
+            </a>
+          </div>
         </div>
 
         {property.tags.length > 0 && (
