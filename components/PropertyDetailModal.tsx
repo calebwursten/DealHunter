@@ -53,6 +53,8 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
   const [phones, setPhones]         = useState<string[]>([]);
   const [debugStep, setDebugStep]   = useState("");
   const [phoneError, setPhoneError] = useState("");
+  const [manualInput, setManualInput] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
   const [tpsUrl, setTpsUrl]         = useState("");
 
   // Reset phone state whenever the displayed property changes
@@ -61,6 +63,8 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
     setPhones([]);
     setDebugStep("");
     setPhoneError("");
+    setManualInput("");
+    setSavingPhone(false);
     if (property) setTpsUrl(buildTpsUrl(property));
   }, [property?.id]);
 
@@ -97,6 +101,30 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
       setDebugStep(`exception:${String(e)}`);
     }
     setPhoneState("done");
+  }
+
+
+  async function savePhone() {
+    if (!property || !manualInput.trim()) return;
+    setSavingPhone(true);
+    try {
+      const res  = await fetch("/api/phone", {
+        method:  "PUT",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ parid: property.id, phone: manualInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setPhones(data.phones ?? []);
+        setPhoneState("done");
+        setManualInput("");
+      } else {
+        alert(data.error ?? "Could not save phone number");
+      }
+    } catch {
+      alert("Could not save phone number");
+    }
+    setSavingPhone(false);
   }
 
   if (!property) return null;
@@ -225,6 +253,27 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
                   </a>
                 ) : (
                   <>
+                {/* Manual entry for non-individual owners */}
+                <div className="mb-3 flex items-center gap-2">
+                  <input
+                    type="tel"
+                    value={manualInput}
+                    onChange={(e) => setManualInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && savePhone()}
+                    placeholder="(412) 555-1234"
+                    className="flex-1 text-sm px-3 py-1.5 rounded-lg outline-none"
+                    style={{ border: "1px solid #e5e5e5", minWidth: 0 }}
+                    onFocus={(e) => (e.target.style.borderColor = "#000000")}
+                    onBlur={(e)  => (e.target.style.borderColor = "#e5e5e5")}
+                  />
+                  <button
+                    onClick={savePhone}
+                    disabled={savingPhone || !manualInput.trim()}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg transition-opacity disabled:opacity-40"
+                    style={{ background: "#000000", color: "#ffffff" }}>
+                    {savingPhone ? "Saving…" : "Save"}
+                  </button>
+                </div>
                 {/* Idle — show Find Phone button */}
                 {phoneState === "idle" && (
                   <button onClick={lookupPhone}
@@ -290,6 +339,27 @@ export default function PropertyDetailModal({ property, onClose }: Props) {
                     </a>
                   </div>
                 )}
+                {/* Manual entry — always available */}
+                <div className="mt-3 pt-3 flex items-center gap-2" style={{ borderTop: "1px solid #f5f5f5" }}>
+                  <input
+                    type="tel"
+                    value={manualInput}
+                    onChange={(e) => setManualInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && savePhone()}
+                    placeholder="(412) 555-1234"
+                    className="flex-1 text-sm px-3 py-1.5 rounded-lg outline-none"
+                    style={{ border: "1px solid #e5e5e5", minWidth: 0 }}
+                    onFocus={(e) => (e.target.style.borderColor = "#000000")}
+                    onBlur={(e)  => (e.target.style.borderColor = "#e5e5e5")}
+                  />
+                  <button
+                    onClick={savePhone}
+                    disabled={savingPhone || !manualInput.trim()}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg transition-opacity disabled:opacity-40"
+                    style={{ background: "#000000", color: "#ffffff" }}>
+                    {savingPhone ? "Saving…" : "Save"}
+                  </button>
+                </div>
                   </>
                 )}
               </div>

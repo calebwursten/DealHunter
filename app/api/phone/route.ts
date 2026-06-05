@@ -151,3 +151,22 @@ export async function POST(req: Request) {
     return Response.json({ phones: [], lookupUrl, debug });
   }
 }
+
+// ── Manual phone entry — save directly to cache ───────────────────────────
+export async function PUT(req: Request) {
+  const { parid, phone } = (await req.json()) as { parid?: string; phone?: string };
+  if (!parid || !phone) return Response.json({ error: "Missing parid or phone" }, { status: 400 });
+
+  // Normalise to (XXX) XXX-XXXX
+  const digits = phone.replace(/\D/g, "");
+  const d = digits.length === 11 && digits[0] === "1" ? digits.slice(1) : digits;
+  if (d.length !== 10) return Response.json({ error: "Enter a 10-digit US number" }, { status: 422 });
+  const formatted = `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+
+  // Merge with any existing cached phones
+  const existing = await getCachedPhone(parid) ?? [];
+  const updated  = [...new Set([...existing, formatted])];
+  await storeCachedPhone(parid, updated);
+
+  return Response.json({ ok: true, phone: formatted, phones: updated });
+}
