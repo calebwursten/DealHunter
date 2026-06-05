@@ -44,6 +44,13 @@ export async function ensureTable() {
       cached_at  TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS property_notes (
+      parid      TEXT PRIMARY KEY,
+      notes      TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
   _ready = true;
 }
 
@@ -199,5 +206,29 @@ export async function storeCachedPhone(parid: string, phones: string[]): Promise
     VALUES (${parid}, ${phones})
     ON CONFLICT (parid)
     DO UPDATE SET phones = ${phones}, cached_at = NOW()
+  `;
+}
+
+// ── Property notes ────────────────────────────────────────────────────────────
+
+export async function getNote(parid: string): Promise<string> {
+  const sql = getSql();
+  if (!sql) return "";
+  await ensureTable();
+  const rows = (await sql`
+    SELECT notes FROM property_notes WHERE parid = ${parid}
+  `) as unknown as { notes: string }[];
+  return rows.length > 0 ? rows[0].notes : "";
+}
+
+export async function saveNote(parid: string, notes: string): Promise<void> {
+  const sql = getSql();
+  if (!sql) return;
+  await ensureTable();
+  await sql`
+    INSERT INTO property_notes (parid, notes)
+    VALUES (${parid}, ${notes})
+    ON CONFLICT (parid)
+    DO UPDATE SET notes = ${notes}, updated_at = NOW()
   `;
 }
