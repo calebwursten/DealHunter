@@ -134,6 +134,7 @@ export async function GET(req: NextRequest) {
   const occupancy =          req.nextUrl.searchParams.get("occupancy") ?? ""; // "owner"|"non-owner"|""
   const typesRaw  =          req.nextUrl.searchParams.get("types")     ?? ""; // "single,multi,lot"
   const typeList  = typesRaw.split(",").filter(Boolean);
+  const valFilter =          req.nextUrl.searchParams.get("valFilter") ?? ""; // "50000-100000" etc.
 
   if (!raw) return Response.json({ records: [], total: 0 });
 
@@ -153,6 +154,17 @@ export async function GET(req: NextRequest) {
     if (typeList.includes("multi"))  typeParts.push(MULTI_COND);
     if (typeList.includes("single")) typeParts.push(SINGLE_COND);
     if (typeParts.length > 0) filterParts.push(`(${typeParts.join(" OR ")})`);
+  }
+
+  // Assessed value range — "min-max" or "min-" (no upper bound)
+  if (valFilter) {
+    const dash = valFilter.indexOf("-");
+    const minStr = dash >= 0 ? valFilter.slice(0, dash) : valFilter;
+    const maxStr = dash >= 0 ? valFilter.slice(dash + 1) : "";
+    const minVal = parseInt(minStr) || 0;
+    const maxVal = parseInt(maxStr) || 0;
+    if (minVal > 0) filterParts.push(`"FAIRMARKETTOTAL" >= ${minVal}`);
+    if (maxVal > 0) filterParts.push(`"FAIRMARKETTOTAL" <= ${maxVal}`);
   }
 
   const filterSql = filterParts.join(" AND ");
