@@ -50,12 +50,9 @@ export default function PropertyCard({ property, onClick }: Props) {
   const eq     = equityStyle[property.equityLevel];
   const tpsUrl = buildTpsUrl(property);
 
-  const apiKey    = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const location  = encodeURIComponent(`${property.address}, ${property.city}, ${property.state}`);
-  const svUrl     = apiKey
-    ? `https://maps.googleapis.com/maps/api/streetview?size=600x280&location=${location}&key=${apiKey}&fov=80&pitch=5&return_error_codes=true`
-    : null;
-  const showPhoto = !!svUrl && !imgError;
+  const svUrl     = `/api/streetview?address=${location}`;
+  const showPhoto = !imgError;
 
   const typeStyle = TYPE_STYLE[property.propertyType] ?? TYPE_STYLE["Single Family"];
   const TypeIcon  = typeStyle.Icon;
