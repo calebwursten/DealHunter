@@ -49,22 +49,24 @@ export default function PropertySearch() {
   const [ownerFilter, setOwnerFilter] = useState<OccupancyFilter>("");
   const [typeFilter, setTypeFilter]   = useState<Set<TypeFilter>>(new Set<TypeFilter>());
   const [valueFilter, setValueFilter] = useState("");   // "" | "0-50000" | "50000-100000" etc.
+  const [bathFilter,  setBathFilter]  = useState("");   // "" | "1"-"5" (min baths)
 
   // ── URL builder ───────────────────────────────────────────────────────────
   function buildUrl(q: string, limit: number, offset: number,
-                    owner: OccupancyFilter, types: Set<TypeFilter>, val = ""): string {
+                    owner: OccupancyFilter, types: Set<TypeFilter>, val = "", bath = ""): string {
     const p = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
     if (owner) p.set("occupancy", owner);
     const ta = [...types];
     if (ta.length > 0) p.set("types", ta.join(","));
-    if (val) p.set("valFilter", val);
+    if (val)  p.set("valFilter", val);
+    if (bath) p.set("minBaths", bath);
     return `/api/search?${p}`;
   }
 
   // ── List view ─────────────────────────────────────────────────────────────
   function fetchListPage(q: string, pageNum: number,
-                         owner = ownerFilter, types = typeFilter, val = valueFilter) {
-    const url = buildUrl(q, PAGE_SIZE, (pageNum - 1) * PAGE_SIZE, owner, types, val);
+                         owner = ownerFilter, types = typeFilter, val = valueFilter, bath = bathFilter) {
+    const url = buildUrl(q, PAGE_SIZE, (pageNum - 1) * PAGE_SIZE, owner, types, val, bath);
     setError("");
     setSearched(true);
     startTransition(async () => {
@@ -84,7 +86,7 @@ export default function PropertySearch() {
 
   // ── Map view — paginate all results ──────────────────────────────────────
   async function fetchAllMapPages(q: string,
-                                  owner = ownerFilter, types = typeFilter, val = valueFilter) {
+                                  owner = ownerFilter, types = typeFilter, val = valueFilter, bath = bathFilter) {
     mapAbortRef.current?.abort();
     const ac = new AbortController();
     mapAbortRef.current = ac;
@@ -101,7 +103,7 @@ export default function PropertySearch() {
 
     try {
       while (offset < total && !ac.signal.aborted) {
-        const res  = await fetch(buildUrl(q, MAP_PAGE, offset, owner, types, val), { signal: ac.signal });
+        const res  = await fetch(buildUrl(q, MAP_PAGE, offset, owner, types, val, bath), { signal: ac.signal });
         const data = await res.json();
         total = data.total ?? 0;
         const pg = (data.records ?? []) as WPRDCRecord[];
@@ -141,8 +143,8 @@ export default function PropertySearch() {
   function applyOwnerFilter(val: OccupancyFilter) {
     setOwnerFilter(val);
     if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, val, typeFilter, valueFilter);
-      else fetchListPage(query, 1, val, typeFilter, valueFilter);
+      if (view === "map") fetchAllMapPages(query, val, typeFilter, valueFilter, bathFilter);
+      else fetchListPage(query, 1, val, typeFilter, valueFilter, bathFilter);
     }
   }
 
@@ -151,21 +153,29 @@ export default function PropertySearch() {
     if (next.has(val)) next.delete(val); else next.add(val);
     setTypeFilter(next);
     if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, next, valueFilter);
-      else fetchListPage(query, 1, ownerFilter, next, valueFilter);
+      if (view === "map") fetchAllMapPages(query, ownerFilter, next, valueFilter, bathFilter);
+      else fetchListPage(query, 1, ownerFilter, next, valueFilter, bathFilter);
     }
   }
 
   function applyValueFilter(val: string) {
     setValueFilter(val);
     if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, val);
-      else fetchListPage(query, 1, ownerFilter, typeFilter, val);
+      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, val, bathFilter);
+      else fetchListPage(query, 1, ownerFilter, typeFilter, val, bathFilter);
+    }
+  }
+
+  function applyBathFilter(val: string) {
+    setBathFilter(val);
+    if (searched && query) {
+      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, valueFilter, val);
+      else fetchListPage(query, 1, ownerFilter, typeFilter, valueFilter, val);
     }
   }
 
   const activeFilterCount =
-    (ownerFilter ? 1 : 0) + (typeFilter.size > 0 ? 1 : 0) + (valueFilter ? 1 : 0);
+    (ownerFilter ? 1 : 0) + (typeFilter.size > 0 ? 1 : 0) + (valueFilter ? 1 : 0) + (bathFilter ? 1 : 0);
 
   const properties = results.map(wprdcToProperty);
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -210,10 +220,10 @@ export default function PropertySearch() {
           {activeFilterCount > 0 && (
             <button
               onClick={() => {
-                setOwnerFilter(""); setTypeFilter(new Set()); setValueFilter("");
+                setOwnerFilter(""); setTypeFilter(new Set()); setValueFilter(""); setBathFilter("");
                 if (searched && query) {
-                  if (view === "map") fetchAllMapPages(query, "", new Set(), "");
-                  else fetchListPage(query, 1, "", new Set(), "");
+                  if (view === "map") fetchAllMapPages(query, "", new Set(), "", "");
+                  else fetchListPage(query, 1, "", new Set(), "", "");
                 }
               }}
               className="text-xs px-2 py-0.5 rounded-full"
@@ -260,7 +270,26 @@ export default function PropertySearch() {
             ))}
           </div>
 
-          {/* Assessed value range */}
+          {/* Min bathrooms */}
+          <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
+            <span className="flex items-center px-3 text-xs font-medium"
+              style={{ color: "#888888", borderRight: "1px solid #e5e5e5", background: "#fafafa" }}>
+              Baths
+            </span>
+            {["1","2","3","4","5"].map((n) => (
+              <button key={n} onClick={() => applyBathFilter(bathFilter === n ? "" : n)}
+                className="px-2.5 py-1.5 text-xs font-medium"
+                style={{
+                  background: bathFilter === n ? "#000000" : "#ffffff",
+                  color:      bathFilter === n ? "#ffffff" : "#555555",
+                  borderLeft: "1px solid #e5e5e5",
+                }}>
+                {n}+
+              </button>
+            ))}
+          </div>
+
+      {/* Assessed value range */}
           <select
             value={valueFilter}
             onChange={(e) => applyValueFilter(e.target.value)}
@@ -453,3 +482,4 @@ export default function PropertySearch() {
     </div>
   );
 }
+

@@ -135,6 +135,7 @@ export async function GET(req: NextRequest) {
   const typesRaw  =          req.nextUrl.searchParams.get("types")     ?? ""; // "single,multi,lot"
   const typeList  = typesRaw.split(",").filter(Boolean);
   const valFilter =          req.nextUrl.searchParams.get("valFilter") ?? ""; // "50000-100000" etc.
+  const minBaths  = parseInt(req.nextUrl.searchParams.get("minBaths")  ?? "0") || 0;
 
   if (!raw) return Response.json({ records: [], total: 0 });
 
@@ -166,6 +167,8 @@ export async function GET(req: NextRequest) {
     if (minVal > 0) filterParts.push(`"FAIRMARKETTOTAL" >= ${minVal}`);
     if (maxVal > 0) filterParts.push(`"FAIRMARKETTOTAL" <= ${maxVal}`);
   }
+
+  if (minBaths > 0) filterParts.push(`"FULLBATHS" >= ${minBaths}`);
 
   const filterSql = filterParts.join(" AND ");
 
@@ -281,3 +284,4 @@ export async function GET(req: NextRequest) {
   const data = await res.json();
   return Response.json({ records: data.result?.records ?? [], total: data.result?.total ?? 0, mode: "fulltext" });
 }
+
