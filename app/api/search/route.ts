@@ -136,6 +136,7 @@ export async function GET(req: NextRequest) {
   const typeList  = typesRaw.split(",").filter(Boolean);
   const valFilter =          req.nextUrl.searchParams.get("valFilter") ?? ""; // "50000-100000" etc.
   const minBaths  = parseInt(req.nextUrl.searchParams.get("minBaths")  ?? "0") || 0;
+  const minYears  = parseInt(req.nextUrl.searchParams.get("minYears")  ?? "0") || 0;
 
   if (!raw) return Response.json({ records: [], total: 0 });
 
@@ -169,6 +170,13 @@ export async function GET(req: NextRequest) {
   }
 
   if (minBaths > 0) filterParts.push(`"FULLBATHS" >= ${minBaths}`);
+
+  if (minYears > 0) {
+    const cutoff = new Date();
+    cutoff.setFullYear(cutoff.getFullYear() - minYears);
+    const cutoffStr = cutoff.toISOString().split("T")[0];
+    filterParts.push(`"SALEDATE" IS NOT NULL AND "SALEDATE" <= '${cutoffStr}'`);
+  }
 
   const filterSql = filterParts.join(" AND ");
 
@@ -284,4 +292,5 @@ export async function GET(req: NextRequest) {
   const data = await res.json();
   return Response.json({ records: data.result?.records ?? [], total: data.result?.total ?? 0, mode: "fulltext" });
 }
+
 
