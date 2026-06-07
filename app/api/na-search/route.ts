@@ -3,6 +3,23 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { searchPatriot, patriotToProperty, PatriotSearchParams } from "@/lib/patriot";
 
+// Normalize street name suffixes to match Patriot Properties abbreviations
+function normalizeStreetName(name: string): string {
+  return name
+    .replace(/\bSTREETS?\b/g,    "ST")
+    .replace(/\bAVENUES?\b/g,    "AVE")
+    .replace(/\bDRIVES?\b/g,     "DR")
+    .replace(/\bROADS?\b/g,      "RD")
+    .replace(/\bBOULEVARDS?\b/g, "BLVD")
+    .replace(/\bLANES?\b/g,      "LN")
+    .replace(/\bCOURTS?\b/g,     "CT")
+    .replace(/\bPLACES?\b/g,     "PL")
+    .replace(/\bCIRCLES?\b/g,    "CIR")
+    .replace(/\bTERRACES?\b/g,   "TER")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function GET(req: NextRequest) {
   const raw      = (req.nextUrl.searchParams.get("q")         ?? "").trim();
   const limit    = Math.min(parseInt(req.nextUrl.searchParams.get("limit")    ?? "25"), 500);
@@ -24,11 +41,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Determine street number vs street name
-  const numStrMatch = raw.match(/^(\d+)\s+(.+)/);
+  // Determine street number vs street name.
+  // Handles plain numbers ("82 Beaver") and hyphenated ranges ("82-84 Beaver").
+  const numStrMatch = raw.match(/^(\d[\d\-]*)\s+(.+)/);
+  const rawStreetName = numStrMatch ? numStrMatch[2] : raw;
   const params: PatriotSearchParams = {
-    streetNumber: numStrMatch ? numStrMatch[1]              : undefined,
-    streetName:   numStrMatch ? numStrMatch[2].toUpperCase() : raw.toUpperCase(),
+    streetNumber: numStrMatch ? numStrMatch[1]                               : undefined,
+    streetName:   normalizeStreetName(rawStreetName.toUpperCase()),
     minValue:     minVal  > 0 ? minVal  : undefined,
     maxValue:     maxVal  > 0 ? maxVal  : undefined,
     minBaths:     minBaths > 0 ? minBaths : undefined,
