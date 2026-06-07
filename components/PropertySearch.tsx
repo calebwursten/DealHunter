@@ -21,7 +21,7 @@ const MapView = dynamic(() => import("@/components/MapView"), {
 const PAGE_SIZE = 25;
 const MAP_PAGE  = 500;
 
-const SUGGESTIONS = [
+const PGH_SUGGESTIONS = [
   "Squirrel Hill Pittsburgh",
   "Shadyside 15232",
   "Mount Washington Pittsburgh",
@@ -29,12 +29,22 @@ const SUGGESTIONS = [
   "Oakland Pittsburgh",
 ];
 
+const NA_SUGGESTIONS = [
+  "Main St",
+  "State St",
+  "Church St",
+  "River St",
+  "Eagle St",
+];
+
+type City          = "pittsburgh" | "northadams";
 type OccupancyFilter = "" | "owner" | "non-owner";
 type TypeFilter      = "single" | "multi" | "lot";
 
 export default function PropertySearch() {
+  const [city, setCity]             = useState<City>("pittsburgh");
   const [query, setQuery]           = useState("");
-  const [results, setResults]       = useState<WPRDCRecord[]>([]);
+  const [results, setResults]       = useState<Property[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage]             = useState(1);
   const [searched, setSearched]     = useState(false);
@@ -48,13 +58,15 @@ export default function PropertySearch() {
   // ── Filter state ──────────────────────────────────────────────────────────
   const [ownerFilter, setOwnerFilter] = useState<OccupancyFilter>("");
   const [typeFilter, setTypeFilter]   = useState<Set<TypeFilter>>(new Set<TypeFilter>());
-  const [valueFilter, setValueFilter] = useState("");   // "" | "0-50000" | "50000-100000" etc.
-  const [bathFilter,  setBathFilter]  = useState("");   // "" | "1"-"5" (min baths)
-  const [yearsFilter, setYearsFilter] = useState("");   // "" | "1"|"5"|"10"|"15"|"20" (min years owned)
+  const [valueFilter, setValueFilter] = useState("");
+  const [bathFilter,  setBathFilter]  = useState("");
+  const [yearsFilter, setYearsFilter] = useState("");
 
   // ── URL builder ───────────────────────────────────────────────────────────
   function buildUrl(q: string, limit: number, offset: number,
-                    owner: OccupancyFilter, types: Set<TypeFilter>, val = "", bath = "", years = ""): string {
+                    owner: OccupancyFilter, types: Set<TypeFilter>,
+                    val = "", bath = "", years = "", c: City = city): string {
+    const endpoint = c === "northadams" ? "/api/na-search" : "/api/search";
     const p = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
     if (owner) p.set("occupancy", owner);
     const ta = [...types];
@@ -62,33 +74,44 @@ export default function PropertySearch() {
     if (val)   p.set("valFilter", val);
     if (bath)  p.set("minBaths", bath);
     if (years) p.set("minYears", years);
-    return `/api/search?${p}`;
+    return `${endpoint}?${p}`;
   }
 
-  // ── List view ─────────────────────────────────────────────────────────────
+  const errMsg = (c: City) =>
+    c === "northadams"
+      ? "Could not reach the North Adams assessor database. Try again."
+      : "Could not reach the Pittsburgh property database. Try again.";
+
+  // ── List fetch ────────────────────────────────────────────────────────────
   function fetchListPage(q: string, pageNum: number,
-                         owner = ownerFilter, types = typeFilter, val = valueFilter, bath = bathFilter, years = yearsFilter) {
-    const url = buildUrl(q, PAGE_SIZE, (pageNum - 1) * PAGE_SIZE, owner, types, val, bath, years);
+                         owner = ownerFilter, types = typeFilter, val = valueFilter,
+                         bath = bathFilter, years = yearsFilter, c: City = city) {
+    const url = buildUrl(q, PAGE_SIZE, (pageNum - 1) * PAGE_SIZE, owner, types, val, bath, years, c);
     setError("");
     setSearched(true);
     startTransition(async () => {
       try {
         const res  = await fetch(url);
         const data = await res.json();
-        setResults(data.records ?? []);
+        const recs = (data.records ?? []) as (WPRDCRecord | Property)[];
+        const props = c === "northadams"
+          ? (recs as Property[])
+          : (recs as WPRDCRecord[]).map(wprdcToProperty);
+        setResults(props);
         setTotalCount(data.total ?? 0);
         setPage(pageNum);
       } catch {
-        setError("Could not reach the Pittsburgh property database. Try again.");
+        setError(errMsg(c));
         setResults([]);
         setTotalCount(0);
       }
     });
   }
 
-  // ── Map view — paginate all results ──────────────────────────────────────
+  // ── Map fetch ─────────────────────────────────────────────────────────────
   async function fetchAllMapPages(q: string,
-                                  owner = ownerFilter, types = typeFilter, val = valueFilter, bath = bathFilter, years = yearsFilter) {
+                                  owner = ownerFilter, types = typeFilter, val = valueFilter,
+                                  bath = bathFilter, years = yearsFilter, c: City = city) {
     mapAbortRef.current?.abort();
     const ac = new AbortController();
     mapAbortRef.current = ac;
@@ -101,23 +124,25 @@ export default function PropertySearch() {
 
     let offset = 0;
     let total  = Infinity;
-    let all: WPRDCRecord[] = [];
+    let all: Property[] = [];
 
     try {
       while (offset < total && !ac.signal.aborted) {
-        const res  = await fetch(buildUrl(q, MAP_PAGE, offset, owner, types, val, bath, years), { signal: ac.signal });
+        const res  = await fetch(buildUrl(q, MAP_PAGE, offset, owner, types, val, bath, years, c), { signal: ac.signal });
         const data = await res.json();
         total = data.total ?? 0;
-        const pg = (data.records ?? []) as WPRDCRecord[];
-        all = [...all, ...pg];
+        const recs = (data.records ?? []) as (WPRDCRecord | Property)[];
+        const props = c === "northadams"
+          ? (recs as Property[])
+          : (recs as WPRDCRecord[]).map(wprdcToProperty);
+        all = [...all, ...props];
         setResults([...all]);
         setTotalCount(total);
-        if (pg.length < MAP_PAGE) break;
+        if (props.length < MAP_PAGE) break;
         offset += MAP_PAGE;
       }
     } catch (e) {
-      if ((e as { name?: string }).name !== "AbortError")
-        setError("Could not reach the Pittsburgh property database. Try again.");
+      if ((e as { name?: string }).name !== "AbortError") setError(errMsg(c));
     }
   }
 
@@ -139,6 +164,21 @@ export default function PropertySearch() {
       if (next === "map") fetchAllMapPages(query);
       else fetchListPage(query, 1);
     }
+  }
+
+  // ── City switch ───────────────────────────────────────────────────────────
+  function switchCity(next: City) {
+    setCity(next);
+    setQuery("");
+    setResults([]);
+    setTotalCount(0);
+    setSearched(false);
+    setError("");
+    setOwnerFilter("");
+    setTypeFilter(new Set());
+    setValueFilter("");
+    setBathFilter("");
+    setYearsFilter("");
   }
 
   // ── Filter handlers ───────────────────────────────────────────────────────
@@ -185,20 +225,44 @@ export default function PropertySearch() {
   }
 
   const activeFilterCount =
-    (ownerFilter ? 1 : 0) + (typeFilter.size > 0 ? 1 : 0) + (valueFilter ? 1 : 0) + (bathFilter ? 1 : 0) + (yearsFilter ? 1 : 0);
+    (ownerFilter ? 1 : 0) + (typeFilter.size > 0 ? 1 : 0) +
+    (valueFilter ? 1 : 0) + (bathFilter ? 1 : 0) + (yearsFilter ? 1 : 0);
 
-  const properties = results.map(wprdcToProperty);
+  const properties = results;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const suggestions = city === "northadams" ? NA_SUGGESTIONS : PGH_SUGGESTIONS;
 
   return (
     <div>
       {/* ── Search bar + filters ── */}
       <div className="rounded-xl p-4 md:p-5 mb-5 md:mb-6" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: "#f0f0f0", color: "#000000" }}>
-            LIVE · Allegheny County
+
+        {/* City selector */}
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
+            <button onClick={() => switchCity("pittsburgh")}
+              className="px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+              style={{
+                background: city === "pittsburgh" ? "#000000" : "#fafafa",
+                color:      city === "pittsburgh" ? "#ffffff" : "#555555",
+              }}>
+              Pittsburgh, PA
+            </button>
+            <button onClick={() => switchCity("northadams")}
+              className="px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+              style={{
+                background: city === "northadams" ? "#000000" : "#fafafa",
+                color:      city === "northadams" ? "#ffffff" : "#555555",
+                borderLeft: "1px solid #e5e5e5",
+              }}>
+              North Adams, MA
+            </button>
+          </div>
+          <span className="text-xs" style={{ color: "#888888" }}>
+            {city === "northadams"
+              ? "5,500+ properties · Berkshire County Assessor"
+              : "140,000+ properties · updated daily"}
           </span>
-          <span className="text-xs" style={{ color: "#888888" }}>140,000+ properties · updated daily</span>
         </div>
 
         {/* Input row */}
@@ -209,7 +273,9 @@ export default function PropertySearch() {
               type="text" value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
-              placeholder="Search by address, neighborhood, or ZIP..."
+              placeholder={city === "northadams"
+                ? "Search by street, address, or owner name..."
+                : "Search by address, neighborhood, or ZIP..."}
               className="w-full pl-9 pr-4 py-2.5 rounded-lg text-sm outline-none"
               style={{ border: "1px solid #e5e5e5" }}
               onFocus={(e) => (e.target.style.borderColor = "#000000")}
@@ -242,24 +308,26 @@ export default function PropertySearch() {
             </button>
           )}
 
-          {/* Occupancy */}
-          <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
-            {([
-              ["", "All Owners"],
-              ["owner", "Owner-Occupied"],
-              ["non-owner", "Non-Owner"],
-            ] as [OccupancyFilter, string][]).map(([val, label], i) => (
-              <button key={val} onClick={() => applyOwnerFilter(val)}
-                className="px-3 py-1.5 text-xs font-medium whitespace-nowrap"
-                style={{
-                  background: ownerFilter === val ? "#000000" : "#fff",
-                  color:      ownerFilter === val ? "#ffffff" : "#555555",
-                  borderLeft: i > 0 ? "1px solid #e5e5e5" : undefined,
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* Occupancy (Pittsburgh only — NA doesn't have homestead flag) */}
+          {city === "pittsburgh" && (
+            <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
+              {([
+                ["", "All Owners"],
+                ["owner", "Owner-Occupied"],
+                ["non-owner", "Non-Owner"],
+              ] as [OccupancyFilter, string][]).map(([val, label], i) => (
+                <button key={val} onClick={() => applyOwnerFilter(val)}
+                  className="px-3 py-1.5 text-xs font-medium whitespace-nowrap"
+                  style={{
+                    background: ownerFilter === val ? "#000000" : "#fff",
+                    color:      ownerFilter === val ? "#ffffff" : "#555555",
+                    borderLeft: i > 0 ? "1px solid #e5e5e5" : undefined,
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Property type */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
@@ -299,8 +367,6 @@ export default function PropertySearch() {
             ))}
           </div>
 
-
-
           {/* Years owned */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
             <span className="flex items-center px-3 text-xs font-medium"
@@ -324,7 +390,7 @@ export default function PropertySearch() {
             })}
           </div>
 
-      {/* Assessed value range */}
+          {/* Assessed value */}
           <select
             value={valueFilter}
             onChange={(e) => applyValueFilter(e.target.value)}
@@ -343,11 +409,11 @@ export default function PropertySearch() {
           </select>
         </div>
 
-        {/* Suggestions (pre-search only) */}
+        {/* Suggestions */}
         {!searched && (
           <div className="flex gap-2 mt-3 flex-wrap">
             <span className="text-xs self-center" style={{ color: "#888888" }}>Try:</span>
-            {SUGGESTIONS.map((s) => (
+            {suggestions.map((s) => (
               <button key={s} onClick={() => { setQuery(s); runSearch(s); }}
                 className="text-xs px-2.5 py-1 rounded-full"
                 style={{ border: "1px solid #e5e5e5", color: "#555555" }}
@@ -424,7 +490,7 @@ export default function PropertySearch() {
         </div>
       )}
 
-      {/* ── Map view — hidden (not unmounted) when modal is open ── */}
+      {/* ── Map view ── */}
       {searched && !isPending && view === "map" && (
         <div style={{ display: selectedProperty ? "none" : "block" }}>
           <MapView
@@ -498,18 +564,37 @@ export default function PropertySearch() {
           <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "#f0f0f0" }}>
             <Search size={24} style={{ color: "#000000" }} />
           </div>
-          <p className="font-semibold mb-1" style={{ color: "#111111" }}>Search Pittsburgh properties</p>
-          <p className="text-sm max-w-xs mx-auto" style={{ color: "#888888" }}>
-            Live data from Allegheny County — ownership, assessed values, sale history, and building details.
-          </p>
-          <div className="mt-6 grid grid-cols-3 gap-4 max-w-sm mx-auto">
-            {[["140K+","Properties"],["Daily","Updates"],["Free","No API key"]].map(([val,label]) => (
-              <div key={label}>
-                <p className="font-bold text-lg" style={{ color: "#000000" }}>{val}</p>
-                <p className="text-xs" style={{ color: "#888888" }}>{label}</p>
+          {city === "northadams" ? (
+            <>
+              <p className="font-semibold mb-1" style={{ color: "#111111" }}>Search North Adams properties</p>
+              <p className="text-sm max-w-xs mx-auto" style={{ color: "#888888" }}>
+                Live data from the North Adams Assessor — ownership, assessed values, sale history, and building details.
+              </p>
+              <div className="mt-6 grid grid-cols-3 gap-4 max-w-sm mx-auto">
+                {[["5.5K+","Properties"],["Annual","Updates"],["Owner","Names Included"]].map(([val,label]) => (
+                  <div key={label}>
+                    <p className="font-bold text-lg" style={{ color: "#000000" }}>{val}</p>
+                    <p className="text-xs" style={{ color: "#888888" }}>{label}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold mb-1" style={{ color: "#111111" }}>Search Pittsburgh properties</p>
+              <p className="text-sm max-w-xs mx-auto" style={{ color: "#888888" }}>
+                Live data from Allegheny County — ownership, assessed values, sale history, and building details.
+              </p>
+              <div className="mt-6 grid grid-cols-3 gap-4 max-w-sm mx-auto">
+                {[["140K+","Properties"],["Daily","Updates"],["Free","No API key"]].map(([val,label]) => (
+                  <div key={label}>
+                    <p className="font-bold text-lg" style={{ color: "#000000" }}>{val}</p>
+                    <p className="text-xs" style={{ color: "#888888" }}>{label}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -517,5 +602,3 @@ export default function PropertySearch() {
     </div>
   );
 }
-
-
