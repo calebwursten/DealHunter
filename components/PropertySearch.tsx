@@ -37,9 +37,22 @@ const NA_SUGGESTIONS = [
   "Eagle St",
 ];
 
-type City          = "pittsburgh" | "northadams";
+type City            = "pittsburgh" | "northadams";
 type OccupancyFilter = "" | "owner" | "non-owner";
 type TypeFilter      = "single" | "multi" | "lot";
+
+// "Last purchased before" year options for NA (maps to minYears sent to API)
+const YEAR_NOW = new Date().getFullYear();
+const NA_PURCHASE_YEARS = [
+  { label: "Any",    minYears: "" },
+  { label: "5+ yrs", minYears: "5"  },
+  { label: "10+ yrs",minYears: "10" },
+  { label: "15+ yrs",minYears: "15" },
+  { label: "20+ yrs",minYears: "20" },
+  { label: "25+ yrs",minYears: "25" },
+] as const;
+
+void YEAR_NOW; // suppress unused-variable warning
 
 export default function PropertySearch() {
   const [city, setCity]             = useState<City>("pittsburgh");
@@ -56,24 +69,28 @@ export default function PropertySearch() {
   const mapAbortRef = useRef<AbortController | null>(null);
 
   // ── Filter state ──────────────────────────────────────────────────────────
-  const [ownerFilter, setOwnerFilter] = useState<OccupancyFilter>("");
-  const [typeFilter, setTypeFilter]   = useState<Set<TypeFilter>>(new Set<TypeFilter>());
-  const [valueFilter, setValueFilter] = useState("");
-  const [bathFilter,  setBathFilter]  = useState("");
-  const [yearsFilter, setYearsFilter] = useState("");
+  const [ownerFilter,   setOwnerFilter]   = useState<OccupancyFilter>("");
+  const [typeFilter,    setTypeFilter]    = useState<Set<TypeFilter>>(new Set<TypeFilter>());
+  const [valueFilter,   setValueFilter]   = useState("");
+  const [bathFilter,    setBathFilter]    = useState("");
+  const [yearsFilter,   setYearsFilter]   = useState("");
+  const [absenteeOnly,  setAbsenteeOnly]  = useState(false);
 
   // ── URL builder ───────────────────────────────────────────────────────────
-  function buildUrl(q: string, limit: number, offset: number,
-                    owner: OccupancyFilter, types: Set<TypeFilter>,
-                    val = "", bath = "", years = "", c: City = city): string {
+  function buildUrl(
+    q: string, limit: number, offset: number,
+    owner: OccupancyFilter, types: Set<TypeFilter>,
+    val = "", bath = "", years = "", absentee = false, c: City = city
+  ): string {
     const endpoint = c === "northadams" ? "/api/na-search" : "/api/search";
     const p = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
-    if (owner) p.set("occupancy", owner);
+    if (owner)   p.set("occupancy", owner);
     const ta = [...types];
     if (ta.length > 0) p.set("types", ta.join(","));
-    if (val)   p.set("valFilter", val);
-    if (bath)  p.set("minBaths", bath);
-    if (years) p.set("minYears", years);
+    if (val)     p.set("valFilter", val);
+    if (bath)    p.set("minBaths", bath);
+    if (years)   p.set("minYears", years);
+    if (absentee && c === "northadams") p.set("absentee", "true");
     return `${endpoint}?${p}`;
   }
 
@@ -83,10 +100,17 @@ export default function PropertySearch() {
       : "Could not reach the Pittsburgh property database. Try again.";
 
   // ── List fetch ────────────────────────────────────────────────────────────
-  function fetchListPage(q: string, pageNum: number,
-                         owner = ownerFilter, types = typeFilter, val = valueFilter,
-                         bath = bathFilter, years = yearsFilter, c: City = city) {
-    const url = buildUrl(q, PAGE_SIZE, (pageNum - 1) * PAGE_SIZE, owner, types, val, bath, years, c);
+  function fetchListPage(
+    q: string, pageNum: number,
+    owner      = ownerFilter,
+    types      = typeFilter,
+    val        = valueFilter,
+    bath       = bathFilter,
+    years      = yearsFilter,
+    absentee   = absenteeOnly,
+    c: City    = city
+  ) {
+    const url = buildUrl(q, PAGE_SIZE, (pageNum - 1) * PAGE_SIZE, owner, types, val, bath, years, absentee, c);
     setError("");
     setSearched(true);
     startTransition(async () => {
@@ -109,9 +133,16 @@ export default function PropertySearch() {
   }
 
   // ── Map fetch ─────────────────────────────────────────────────────────────
-  async function fetchAllMapPages(q: string,
-                                  owner = ownerFilter, types = typeFilter, val = valueFilter,
-                                  bath = bathFilter, years = yearsFilter, c: City = city) {
+  async function fetchAllMapPages(
+    q: string,
+    owner    = ownerFilter,
+    types    = typeFilter,
+    val      = valueFilter,
+    bath     = bathFilter,
+    years    = yearsFilter,
+    absentee = absenteeOnly,
+    c: City  = city
+  ) {
     mapAbortRef.current?.abort();
     const ac = new AbortController();
     mapAbortRef.current = ac;
@@ -128,7 +159,7 @@ export default function PropertySearch() {
 
     try {
       while (offset < total && !ac.signal.aborted) {
-        const res  = await fetch(buildUrl(q, MAP_PAGE, offset, owner, types, val, bath, years, c), { signal: ac.signal });
+        const res  = await fetch(buildUrl(q, MAP_PAGE, offset, owner, types, val, bath, years, absentee, c), { signal: ac.signal });
         const data = await res.json();
         total = data.total ?? 0;
         const recs = (data.records ?? []) as (WPRDCRecord | Property)[];
@@ -179,14 +210,15 @@ export default function PropertySearch() {
     setValueFilter("");
     setBathFilter("");
     setYearsFilter("");
+    setAbsenteeOnly(false);
   }
 
   // ── Filter handlers ───────────────────────────────────────────────────────
   function applyOwnerFilter(val: OccupancyFilter) {
     setOwnerFilter(val);
     if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, val, typeFilter, valueFilter, bathFilter, yearsFilter);
-      else fetchListPage(query, 1, val, typeFilter, valueFilter, bathFilter, yearsFilter);
+      if (view === "map") fetchAllMapPages(query, val, typeFilter, valueFilter, bathFilter, yearsFilter, absenteeOnly);
+      else fetchListPage(query, 1, val, typeFilter, valueFilter, bathFilter, yearsFilter, absenteeOnly);
     }
   }
 
@@ -195,41 +227,50 @@ export default function PropertySearch() {
     if (next.has(val)) next.delete(val); else next.add(val);
     setTypeFilter(next);
     if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, next, valueFilter, bathFilter, yearsFilter);
-      else fetchListPage(query, 1, ownerFilter, next, valueFilter, bathFilter, yearsFilter);
+      if (view === "map") fetchAllMapPages(query, ownerFilter, next, valueFilter, bathFilter, yearsFilter, absenteeOnly);
+      else fetchListPage(query, 1, ownerFilter, next, valueFilter, bathFilter, yearsFilter, absenteeOnly);
     }
   }
 
   function applyValueFilter(val: string) {
     setValueFilter(val);
     if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, val, bathFilter, yearsFilter);
-      else fetchListPage(query, 1, ownerFilter, typeFilter, val, bathFilter, yearsFilter);
+      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, val, bathFilter, yearsFilter, absenteeOnly);
+      else fetchListPage(query, 1, ownerFilter, typeFilter, val, bathFilter, yearsFilter, absenteeOnly);
     }
   }
 
   function applyBathFilter(val: string) {
     setBathFilter(val);
     if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, valueFilter, val, yearsFilter);
-      else fetchListPage(query, 1, ownerFilter, typeFilter, valueFilter, val, yearsFilter);
+      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, valueFilter, val, yearsFilter, absenteeOnly);
+      else fetchListPage(query, 1, ownerFilter, typeFilter, valueFilter, val, yearsFilter, absenteeOnly);
     }
   }
 
   function applyYearsFilter(val: string) {
     setYearsFilter(val);
     if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, valueFilter, bathFilter, val);
-      else fetchListPage(query, 1, ownerFilter, typeFilter, valueFilter, bathFilter, val);
+      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, valueFilter, bathFilter, val, absenteeOnly);
+      else fetchListPage(query, 1, ownerFilter, typeFilter, valueFilter, bathFilter, val, absenteeOnly);
+    }
+  }
+
+  function applyAbsenteeFilter(val: boolean) {
+    setAbsenteeOnly(val);
+    if (searched && query) {
+      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, valueFilter, bathFilter, yearsFilter, val);
+      else fetchListPage(query, 1, ownerFilter, typeFilter, valueFilter, bathFilter, yearsFilter, val);
     }
   }
 
   const activeFilterCount =
     (ownerFilter ? 1 : 0) + (typeFilter.size > 0 ? 1 : 0) +
-    (valueFilter ? 1 : 0) + (bathFilter ? 1 : 0) + (yearsFilter ? 1 : 0);
+    (valueFilter ? 1 : 0) + (bathFilter ? 1 : 0) + (yearsFilter ? 1 : 0) +
+    (absenteeOnly ? 1 : 0);
 
-  const properties = results;
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const properties  = results;
+  const totalPages  = Math.ceil(totalCount / PAGE_SIZE);
   const suggestions = city === "northadams" ? NA_SUGGESTIONS : PGH_SUGGESTIONS;
 
   return (
@@ -296,10 +337,11 @@ export default function PropertySearch() {
           {activeFilterCount > 0 && (
             <button
               onClick={() => {
-                setOwnerFilter(""); setTypeFilter(new Set()); setValueFilter(""); setBathFilter(""); setYearsFilter("");
+                setOwnerFilter(""); setTypeFilter(new Set()); setValueFilter("");
+                setBathFilter(""); setYearsFilter(""); setAbsenteeOnly(false);
                 if (searched && query) {
-                  if (view === "map") fetchAllMapPages(query, "", new Set(), "", "", "");
-                  else fetchListPage(query, 1, "", new Set(), "", "", "");
+                  if (view === "map") fetchAllMapPages(query, "", new Set(), "", "", "", false);
+                  else fetchListPage(query, 1, "", new Set(), "", "", "", false);
                 }
               }}
               className="text-xs px-2 py-0.5 rounded-full"
@@ -308,7 +350,7 @@ export default function PropertySearch() {
             </button>
           )}
 
-          {/* Occupancy (Pittsburgh only — NA doesn't have homestead flag) */}
+          {/* Occupancy (Pittsburgh only) */}
           {city === "pittsburgh" && (
             <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
               {([
@@ -327,6 +369,20 @@ export default function PropertySearch() {
                 </button>
               ))}
             </div>
+          )}
+
+          {/* Absentee owner toggle (North Adams only) */}
+          {city === "northadams" && (
+            <button
+              onClick={() => applyAbsenteeFilter(!absenteeOnly)}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap"
+              style={{
+                background: absenteeOnly ? "#000000" : "#fff",
+                color:      absenteeOnly ? "#ffffff" : "#555555",
+                border:     "1px solid #e5e5e5",
+              }}>
+              Absentee Owner
+            </button>
           )}
 
           {/* Property type */}
@@ -367,27 +423,41 @@ export default function PropertySearch() {
             ))}
           </div>
 
-          {/* Years owned */}
+          {/* Last purchased / years owned */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
-            <span className="flex items-center px-3 text-xs font-medium"
+            <span className="flex items-center px-3 text-xs font-medium whitespace-nowrap"
               style={{ color: "#888888", borderRight: "1px solid #e5e5e5", background: "#fafafa" }}>
-              Owned
+              {city === "northadams" ? "Purchased" : "Owned"}
             </span>
-            {(["0","1","5","10","15","20"] as const).map((n) => {
-              const isActive = n === "0" ? yearsFilter === "" : yearsFilter === n;
-              return (
-                <button key={n}
-                  onClick={() => applyYearsFilter(n === "0" ? "" : (yearsFilter === n ? "" : n))}
-                  className="px-2.5 py-1.5 text-xs font-medium"
-                  style={{
-                    background: isActive ? "#000000" : "#ffffff",
-                    color:      isActive ? "#ffffff" : "#555555",
-                    borderLeft: "1px solid #e5e5e5",
-                  }}>
-                  {n}+
-                </button>
-              );
-            })}
+            {city === "northadams"
+              ? NA_PURCHASE_YEARS.slice(1).map((opt) => (
+                  <button key={opt.minYears}
+                    onClick={() => applyYearsFilter(yearsFilter === opt.minYears ? "" : opt.minYears)}
+                    className="px-2.5 py-1.5 text-xs font-medium whitespace-nowrap"
+                    style={{
+                      background: yearsFilter === opt.minYears ? "#000000" : "#ffffff",
+                      color:      yearsFilter === opt.minYears ? "#ffffff" : "#555555",
+                      borderLeft: "1px solid #e5e5e5",
+                    }}>
+                    {opt.label}
+                  </button>
+                ))
+              : (["0","1","5","10","15","20"] as const).map((n) => {
+                  const isActive = n === "0" ? yearsFilter === "" : yearsFilter === n;
+                  return (
+                    <button key={n}
+                      onClick={() => applyYearsFilter(n === "0" ? "" : (yearsFilter === n ? "" : n))}
+                      className="px-2.5 py-1.5 text-xs font-medium"
+                      style={{
+                        background: isActive ? "#000000" : "#ffffff",
+                        color:      isActive ? "#ffffff" : "#555555",
+                        borderLeft: "1px solid #e5e5e5",
+                      }}>
+                      {n}+
+                    </button>
+                  );
+                })
+            }
           </div>
 
           {/* Assessed value */}
