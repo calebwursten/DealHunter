@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import { Search, MapPin, Loader2, Building2, List, Map, ChevronLeft, ChevronRight } from "lucide-react";
 import PropertyCard from "@/components/PropertyCard";
 import PropertyDetailModal from "@/components/PropertyDetailModal";
-import { wprdcToProperty, WPRDCRecord } from "@/lib/wprdc";
 import { Property } from "@/lib/types";
 
 const MapView = dynamic(() => import("@/components/MapView"), {
@@ -21,15 +20,7 @@ const MapView = dynamic(() => import("@/components/MapView"), {
 const PAGE_SIZE = 25;
 const MAP_PAGE  = 500;
 
-const PGH_SUGGESTIONS = [
-  "Squirrel Hill Pittsburgh",
-  "Shadyside 15232",
-  "Mount Washington Pittsburgh",
-  "Lawrenceville 15201",
-  "Oakland Pittsburgh",
-];
-
-const NA_SUGGESTIONS = [
+const SUGGESTIONS = [
   "Main St",
   "State St",
   "Church St",
@@ -37,25 +28,18 @@ const NA_SUGGESTIONS = [
   "Eagle St",
 ];
 
-type City            = "pittsburgh" | "northadams";
-type OccupancyFilter = "" | "owner" | "non-owner";
-type TypeFilter      = "single" | "multi" | "lot";
-
-// "Last purchased before" year options for NA (maps to minYears sent to API)
-const YEAR_NOW = new Date().getFullYear();
-const NA_PURCHASE_YEARS = [
-  { label: "Any",    minYears: "" },
-  { label: "5+ yrs", minYears: "5"  },
-  { label: "10+ yrs",minYears: "10" },
-  { label: "15+ yrs",minYears: "15" },
-  { label: "20+ yrs",minYears: "20" },
-  { label: "25+ yrs",minYears: "25" },
+// "Last purchased before" options — maps to minYears sent to the API
+const PURCHASE_FILTERS = [
+  { label: "5+ yrs",  minYears: "5"  },
+  { label: "10+ yrs", minYears: "10" },
+  { label: "15+ yrs", minYears: "15" },
+  { label: "20+ yrs", minYears: "20" },
+  { label: "25+ yrs", minYears: "25" },
 ] as const;
 
-void YEAR_NOW; // suppress unused-variable warning
+type TypeFilter = "single" | "multi" | "lot";
 
 export default function PropertySearch() {
-  const [city, setCity]             = useState<City>("pittsburgh");
   const [query, setQuery]           = useState("");
   const [results, setResults]       = useState<Property[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -69,63 +53,45 @@ export default function PropertySearch() {
   const mapAbortRef = useRef<AbortController | null>(null);
 
   // ── Filter state ──────────────────────────────────────────────────────────
-  const [ownerFilter,   setOwnerFilter]   = useState<OccupancyFilter>("");
-  const [typeFilter,    setTypeFilter]    = useState<Set<TypeFilter>>(new Set<TypeFilter>());
-  const [valueFilter,   setValueFilter]   = useState("");
-  const [bathFilter,    setBathFilter]    = useState("");
-  const [yearsFilter,   setYearsFilter]   = useState("");
-  const [absenteeOnly,  setAbsenteeOnly]  = useState(false);
+  const [typeFilter,   setTypeFilter]   = useState<Set<TypeFilter>>(new Set<TypeFilter>());
+  const [valueFilter,  setValueFilter]  = useState("");
+  const [yearsFilter,  setYearsFilter]  = useState("");
+  const [absenteeOnly, setAbsenteeOnly] = useState(false);
 
   // ── URL builder ───────────────────────────────────────────────────────────
   function buildUrl(
     q: string, limit: number, offset: number,
-    owner: OccupancyFilter, types: Set<TypeFilter>,
-    val = "", bath = "", years = "", absentee = false, c: City = city
+    types: Set<TypeFilter>, val: string, years: string, absentee: boolean
   ): string {
-    const endpoint = c === "northadams" ? "/api/na-search" : "/api/search";
     const p = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
-    if (owner)   p.set("occupancy", owner);
     const ta = [...types];
-    if (ta.length > 0) p.set("types", ta.join(","));
+    if (ta.length > 0 && ta.length < 3) p.set("types", ta.join(","));
     if (val)     p.set("valFilter", val);
-    if (bath)    p.set("minBaths", bath);
     if (years)   p.set("minYears", years);
-    if (absentee && c === "northadams") p.set("absentee", "true");
-    return `${endpoint}?${p}`;
+    if (absentee) p.set("absentee", "true");
+    return `/api/na-search?${p}`;
   }
-
-  const errMsg = (c: City) =>
-    c === "northadams"
-      ? "Could not reach the North Adams assessor database. Try again."
-      : "Could not reach the Pittsburgh property database. Try again.";
 
   // ── List fetch ────────────────────────────────────────────────────────────
   function fetchListPage(
     q: string, pageNum: number,
-    owner      = ownerFilter,
-    types      = typeFilter,
-    val        = valueFilter,
-    bath       = bathFilter,
-    years      = yearsFilter,
-    absentee   = absenteeOnly,
-    c: City    = city
+    types    = typeFilter,
+    val      = valueFilter,
+    years    = yearsFilter,
+    absentee = absenteeOnly,
   ) {
-    const url = buildUrl(q, PAGE_SIZE, (pageNum - 1) * PAGE_SIZE, owner, types, val, bath, years, absentee, c);
+    const url = buildUrl(q, PAGE_SIZE, (pageNum - 1) * PAGE_SIZE, types, val, years, absentee);
     setError("");
     setSearched(true);
     startTransition(async () => {
       try {
         const res  = await fetch(url);
-        const data = await res.json();
-        const recs = (data.records ?? []) as (WPRDCRecord | Property)[];
-        const props = c === "northadams"
-          ? (recs as Property[])
-          : (recs as WPRDCRecord[]).map(wprdcToProperty);
-        setResults(props);
+        const data = await res.json() as { records: Property[]; total: number };
+        setResults(data.records ?? []);
         setTotalCount(data.total ?? 0);
         setPage(pageNum);
       } catch {
-        setError(errMsg(c));
+        setError("Could not reach the North Adams property database. Try again.");
         setResults([]);
         setTotalCount(0);
       }
@@ -135,13 +101,10 @@ export default function PropertySearch() {
   // ── Map fetch ─────────────────────────────────────────────────────────────
   async function fetchAllMapPages(
     q: string,
-    owner    = ownerFilter,
     types    = typeFilter,
     val      = valueFilter,
-    bath     = bathFilter,
     years    = yearsFilter,
     absentee = absenteeOnly,
-    c: City  = city
   ) {
     mapAbortRef.current?.abort();
     const ac = new AbortController();
@@ -153,19 +116,15 @@ export default function PropertySearch() {
     setError("");
     setMapSearchKey((k) => k + 1);
 
-    let offset = 0;
-    let total  = Infinity;
+    let offset = 0, total = Infinity;
     let all: Property[] = [];
 
     try {
       while (offset < total && !ac.signal.aborted) {
-        const res  = await fetch(buildUrl(q, MAP_PAGE, offset, owner, types, val, bath, years, absentee, c), { signal: ac.signal });
-        const data = await res.json();
+        const res  = await fetch(buildUrl(q, MAP_PAGE, offset, types, val, years, absentee), { signal: ac.signal });
+        const data = await res.json() as { records: Property[]; total: number };
         total = data.total ?? 0;
-        const recs = (data.records ?? []) as (WPRDCRecord | Property)[];
-        const props = c === "northadams"
-          ? (recs as Property[])
-          : (recs as WPRDCRecord[]).map(wprdcToProperty);
+        const props = data.records ?? [];
         all = [...all, ...props];
         setResults([...all]);
         setTotalCount(total);
@@ -173,13 +132,13 @@ export default function PropertySearch() {
         offset += MAP_PAGE;
       }
     } catch (e) {
-      if ((e as { name?: string }).name !== "AbortError") setError(errMsg(c));
+      if ((e as { name?: string }).name !== "AbortError")
+        setError("Could not reach the North Adams property database. Try again.");
     }
   }
 
   // ── Unified entry point ───────────────────────────────────────────────────
   function runSearch(q: string, currentView = view) {
-    if (!q.trim()) return;
     if (currentView === "map") fetchAllMapPages(q);
     else fetchListPage(q, 1);
   }
@@ -191,132 +150,75 @@ export default function PropertySearch() {
 
   function switchView(next: "list" | "map") {
     setView(next);
-    if (searched && query) {
+    if (searched) {
       if (next === "map") fetchAllMapPages(query);
       else fetchListPage(query, 1);
     }
   }
 
-  // ── City switch ───────────────────────────────────────────────────────────
-  function switchCity(next: City) {
-    setCity(next);
-    setQuery("");
-    setResults([]);
-    setTotalCount(0);
-    setSearched(false);
-    setError("");
-    setOwnerFilter("");
-    setTypeFilter(new Set());
-    setValueFilter("");
-    setBathFilter("");
-    setYearsFilter("");
-    setAbsenteeOnly(false);
-  }
-
   // ── Filter handlers ───────────────────────────────────────────────────────
-  function applyOwnerFilter(val: OccupancyFilter) {
-    setOwnerFilter(val);
-    if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, val, typeFilter, valueFilter, bathFilter, yearsFilter, absenteeOnly);
-      else fetchListPage(query, 1, val, typeFilter, valueFilter, bathFilter, yearsFilter, absenteeOnly);
-    }
-  }
-
   function toggleTypeFilter(val: TypeFilter) {
     const next = new Set(typeFilter);
     if (next.has(val)) next.delete(val); else next.add(val);
     setTypeFilter(next);
-    if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, next, valueFilter, bathFilter, yearsFilter, absenteeOnly);
-      else fetchListPage(query, 1, ownerFilter, next, valueFilter, bathFilter, yearsFilter, absenteeOnly);
+    if (searched) {
+      if (view === "map") fetchAllMapPages(query, next, valueFilter, yearsFilter, absenteeOnly);
+      else fetchListPage(query, 1, next, valueFilter, yearsFilter, absenteeOnly);
     }
   }
 
   function applyValueFilter(val: string) {
     setValueFilter(val);
-    if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, val, bathFilter, yearsFilter, absenteeOnly);
-      else fetchListPage(query, 1, ownerFilter, typeFilter, val, bathFilter, yearsFilter, absenteeOnly);
-    }
-  }
-
-  function applyBathFilter(val: string) {
-    setBathFilter(val);
-    if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, valueFilter, val, yearsFilter, absenteeOnly);
-      else fetchListPage(query, 1, ownerFilter, typeFilter, valueFilter, val, yearsFilter, absenteeOnly);
+    if (searched) {
+      if (view === "map") fetchAllMapPages(query, typeFilter, val, yearsFilter, absenteeOnly);
+      else fetchListPage(query, 1, typeFilter, val, yearsFilter, absenteeOnly);
     }
   }
 
   function applyYearsFilter(val: string) {
     setYearsFilter(val);
-    if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, valueFilter, bathFilter, val, absenteeOnly);
-      else fetchListPage(query, 1, ownerFilter, typeFilter, valueFilter, bathFilter, val, absenteeOnly);
+    if (searched) {
+      if (view === "map") fetchAllMapPages(query, typeFilter, valueFilter, val, absenteeOnly);
+      else fetchListPage(query, 1, typeFilter, valueFilter, val, absenteeOnly);
     }
   }
 
   function applyAbsenteeFilter(val: boolean) {
     setAbsenteeOnly(val);
-    if (searched && query) {
-      if (view === "map") fetchAllMapPages(query, ownerFilter, typeFilter, valueFilter, bathFilter, yearsFilter, val);
-      else fetchListPage(query, 1, ownerFilter, typeFilter, valueFilter, bathFilter, yearsFilter, val);
+    if (searched) {
+      if (view === "map") fetchAllMapPages(query, typeFilter, valueFilter, yearsFilter, val);
+      else fetchListPage(query, 1, typeFilter, valueFilter, yearsFilter, val);
     }
   }
 
   const activeFilterCount =
-    (ownerFilter ? 1 : 0) + (typeFilter.size > 0 ? 1 : 0) +
-    (valueFilter ? 1 : 0) + (bathFilter ? 1 : 0) + (yearsFilter ? 1 : 0) +
-    (absenteeOnly ? 1 : 0);
+    (typeFilter.size > 0 ? 1 : 0) + (valueFilter ? 1 : 0) +
+    (yearsFilter ? 1 : 0) + (absenteeOnly ? 1 : 0);
 
-  const properties  = results;
-  const totalPages  = Math.ceil(totalCount / PAGE_SIZE);
-  const suggestions = city === "northadams" ? NA_SUGGESTIONS : PGH_SUGGESTIONS;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div>
       {/* ── Search bar + filters ── */}
       <div className="rounded-xl p-4 md:p-5 mb-5 md:mb-6" style={{ background: "#fff", border: "1px solid #e5e5e5" }}>
 
-        {/* City selector */}
-        <div className="flex items-center gap-3 mb-3">
-          <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
-            <button onClick={() => switchCity("pittsburgh")}
-              className="px-3 py-1.5 text-xs font-medium whitespace-nowrap"
-              style={{
-                background: city === "pittsburgh" ? "#000000" : "#fafafa",
-                color:      city === "pittsburgh" ? "#ffffff" : "#555555",
-              }}>
-              Pittsburgh, PA
-            </button>
-            <button onClick={() => switchCity("northadams")}
-              className="px-3 py-1.5 text-xs font-medium whitespace-nowrap"
-              style={{
-                background: city === "northadams" ? "#000000" : "#fafafa",
-                color:      city === "northadams" ? "#ffffff" : "#555555",
-                borderLeft: "1px solid #e5e5e5",
-              }}>
-              North Adams, MA
-            </button>
-          </div>
-          <span className="text-xs" style={{ color: "#888888" }}>
-            {city === "northadams"
-              ? "5,500+ properties · Berkshire County Assessor"
-              : "140,000+ properties · updated daily"}
+        {/* City label */}
+        <div className="flex items-center gap-2 mb-3">
+          <MapPin size={14} style={{ color: "#888888" }} />
+          <span className="text-xs font-medium" style={{ color: "#888888" }}>
+            North Adams, MA · 5,400+ properties · Berkshire County Assessor + MassGIS
           </span>
         </div>
 
         {/* Input row */}
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1 relative">
-            <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#888888" }} />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#888888" }} />
             <input
               type="text" value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
-              placeholder={city === "northadams"
-                ? "Search by street, address, or owner name..."
-                : "Search by address, neighborhood, or ZIP..."}
+              placeholder='Street, address, or "North Adams" for all properties…'
               className="w-full pl-9 pr-4 py-2.5 rounded-lg text-sm outline-none"
               style={{ border: "1px solid #e5e5e5" }}
               onFocus={(e) => (e.target.style.borderColor = "#000000")}
@@ -334,14 +236,14 @@ export default function PropertySearch() {
         {/* ── Filters ── */}
         <div className="mt-3 pt-3 flex flex-wrap gap-2 items-center" style={{ borderTop: "1px solid #f0f0f0" }}>
           <span className="text-xs font-medium" style={{ color: "#888888" }}>Filters</span>
+
           {activeFilterCount > 0 && (
             <button
               onClick={() => {
-                setOwnerFilter(""); setTypeFilter(new Set()); setValueFilter("");
-                setBathFilter(""); setYearsFilter(""); setAbsenteeOnly(false);
-                if (searched && query) {
-                  if (view === "map") fetchAllMapPages(query, "", new Set(), "", "", "", false);
-                  else fetchListPage(query, 1, "", new Set(), "", "", "", false);
+                setTypeFilter(new Set()); setValueFilter(""); setYearsFilter(""); setAbsenteeOnly(false);
+                if (searched) {
+                  if (view === "map") fetchAllMapPages(query, new Set(), "", "", false);
+                  else fetchListPage(query, 1, new Set(), "", "", false);
                 }
               }}
               className="text-xs px-2 py-0.5 rounded-full"
@@ -350,40 +252,17 @@ export default function PropertySearch() {
             </button>
           )}
 
-          {/* Occupancy (Pittsburgh only) */}
-          {city === "pittsburgh" && (
-            <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
-              {([
-                ["", "All Owners"],
-                ["owner", "Owner-Occupied"],
-                ["non-owner", "Non-Owner"],
-              ] as [OccupancyFilter, string][]).map(([val, label], i) => (
-                <button key={val} onClick={() => applyOwnerFilter(val)}
-                  className="px-3 py-1.5 text-xs font-medium whitespace-nowrap"
-                  style={{
-                    background: ownerFilter === val ? "#000000" : "#fff",
-                    color:      ownerFilter === val ? "#ffffff" : "#555555",
-                    borderLeft: i > 0 ? "1px solid #e5e5e5" : undefined,
-                  }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Absentee owner toggle (North Adams only) */}
-          {city === "northadams" && (
-            <button
-              onClick={() => applyAbsenteeFilter(!absenteeOnly)}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap"
-              style={{
-                background: absenteeOnly ? "#000000" : "#fff",
-                color:      absenteeOnly ? "#ffffff" : "#555555",
-                border:     "1px solid #e5e5e5",
-              }}>
-              Absentee Owner
-            </button>
-          )}
+          {/* Absentee owner */}
+          <button
+            onClick={() => applyAbsenteeFilter(!absenteeOnly)}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap"
+            style={{
+              background: absenteeOnly ? "#000000" : "#fff",
+              color:      absenteeOnly ? "#ffffff" : "#555555",
+              border:     "1px solid #e5e5e5",
+            }}>
+            Absentee Owner
+          </button>
 
           {/* Property type */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
@@ -404,60 +283,24 @@ export default function PropertySearch() {
             ))}
           </div>
 
-          {/* Min bathrooms */}
-          <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
-            <span className="flex items-center px-3 text-xs font-medium"
-              style={{ color: "#888888", borderRight: "1px solid #e5e5e5", background: "#fafafa" }}>
-              Baths
-            </span>
-            {["1","2","3","4","5"].map((n) => (
-              <button key={n} onClick={() => applyBathFilter(bathFilter === n ? "" : n)}
-                className="px-2.5 py-1.5 text-xs font-medium"
-                style={{
-                  background: bathFilter === n ? "#000000" : "#ffffff",
-                  color:      bathFilter === n ? "#ffffff" : "#555555",
-                  borderLeft: "1px solid #e5e5e5",
-                }}>
-                {n}+
-              </button>
-            ))}
-          </div>
-
-          {/* Last purchased / years owned */}
+          {/* Last purchased */}
           <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #e5e5e5" }}>
             <span className="flex items-center px-3 text-xs font-medium whitespace-nowrap"
               style={{ color: "#888888", borderRight: "1px solid #e5e5e5", background: "#fafafa" }}>
-              {city === "northadams" ? "Purchased" : "Owned"}
+              Purchased
             </span>
-            {city === "northadams"
-              ? NA_PURCHASE_YEARS.slice(1).map((opt) => (
-                  <button key={opt.minYears}
-                    onClick={() => applyYearsFilter(yearsFilter === opt.minYears ? "" : opt.minYears)}
-                    className="px-2.5 py-1.5 text-xs font-medium whitespace-nowrap"
-                    style={{
-                      background: yearsFilter === opt.minYears ? "#000000" : "#ffffff",
-                      color:      yearsFilter === opt.minYears ? "#ffffff" : "#555555",
-                      borderLeft: "1px solid #e5e5e5",
-                    }}>
-                    {opt.label}
-                  </button>
-                ))
-              : (["0","1","5","10","15","20"] as const).map((n) => {
-                  const isActive = n === "0" ? yearsFilter === "" : yearsFilter === n;
-                  return (
-                    <button key={n}
-                      onClick={() => applyYearsFilter(n === "0" ? "" : (yearsFilter === n ? "" : n))}
-                      className="px-2.5 py-1.5 text-xs font-medium"
-                      style={{
-                        background: isActive ? "#000000" : "#ffffff",
-                        color:      isActive ? "#ffffff" : "#555555",
-                        borderLeft: "1px solid #e5e5e5",
-                      }}>
-                      {n}+
-                    </button>
-                  );
-                })
-            }
+            {PURCHASE_FILTERS.map((opt) => (
+              <button key={opt.minYears}
+                onClick={() => applyYearsFilter(yearsFilter === opt.minYears ? "" : opt.minYears)}
+                className="px-2.5 py-1.5 text-xs font-medium whitespace-nowrap"
+                style={{
+                  background: yearsFilter === opt.minYears ? "#000000" : "#ffffff",
+                  color:      yearsFilter === opt.minYears ? "#ffffff" : "#555555",
+                  borderLeft: "1px solid #e5e5e5",
+                }}>
+                {opt.label}
+              </button>
+            ))}
           </div>
 
           {/* Assessed value */}
@@ -483,7 +326,7 @@ export default function PropertySearch() {
         {!searched && (
           <div className="flex gap-2 mt-3 flex-wrap">
             <span className="text-xs self-center" style={{ color: "#888888" }}>Try:</span>
-            {suggestions.map((s) => (
+            {SUGGESTIONS.map((s) => (
               <button key={s} onClick={() => { setQuery(s); runSearch(s); }}
                 className="text-xs px-2.5 py-1 rounded-full"
                 style={{ border: "1px solid #e5e5e5", color: "#555555" }}
@@ -492,6 +335,13 @@ export default function PropertySearch() {
                 {s}
               </button>
             ))}
+            <button onClick={() => { setQuery("North Adams"); runSearch("North Adams"); }}
+              className="text-xs px-2.5 py-1 rounded-full font-medium"
+              style={{ border: "1px solid #000000", color: "#000000" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#000000"; (e.currentTarget as HTMLElement).style.color = "#ffffff"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#000000"; }}>
+              Browse all →
+            </button>
           </div>
         )}
       </div>
@@ -564,7 +414,7 @@ export default function PropertySearch() {
       {searched && !isPending && view === "map" && (
         <div style={{ display: selectedProperty ? "none" : "block" }}>
           <MapView
-            properties={properties}
+            properties={results}
             searchKey={mapSearchKey}
             totalCount={totalCount}
             onSelect={setSelectedProperty}
@@ -573,10 +423,10 @@ export default function PropertySearch() {
       )}
 
       {/* ── List view ── */}
-      {!isPending && properties.length > 0 && view === "list" && (
+      {!isPending && results.length > 0 && view === "list" && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-            {properties.map((p) => (
+            {results.map((p) => (
               <PropertyCard key={p.id} property={p} onClick={() => setSelectedProperty(p)} />
             ))}
           </div>
@@ -584,7 +434,7 @@ export default function PropertySearch() {
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 mt-8">
               <button onClick={() => goToPage(page - 1)} disabled={page === 1}
-                className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30"
+                className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-30"
                 style={{ border: "1px solid #e5e5e5", color: "#111111" }}
                 onMouseEnter={(e) => { if (page > 1) (e.currentTarget as HTMLElement).style.background = "#f5f5f5"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
@@ -603,7 +453,7 @@ export default function PropertySearch() {
                     <span key={`e-${i}`} className="px-1 text-sm" style={{ color: "#aaaaaa" }}>…</span>
                   ) : (
                     <button key={p} onClick={() => goToPage(p as number)}
-                      className="w-9 h-9 rounded-lg text-sm font-medium transition-colors"
+                      className="w-9 h-9 rounded-lg text-sm font-medium"
                       style={{
                         background: p === page ? "#000000" : "transparent",
                         color: p === page ? "#ffffff" : "#111111",
@@ -617,7 +467,7 @@ export default function PropertySearch() {
                 )}
 
               <button onClick={() => goToPage(page + 1)} disabled={page >= totalPages}
-                className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30"
+                className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-30"
                 style={{ border: "1px solid #e5e5e5", color: "#111111" }}
                 onMouseEnter={(e) => { if (page < totalPages) (e.currentTarget as HTMLElement).style.background = "#f5f5f5"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
@@ -634,37 +484,22 @@ export default function PropertySearch() {
           <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "#f0f0f0" }}>
             <Search size={24} style={{ color: "#000000" }} />
           </div>
-          {city === "northadams" ? (
-            <>
-              <p className="font-semibold mb-1" style={{ color: "#111111" }}>Search North Adams properties</p>
-              <p className="text-sm max-w-xs mx-auto" style={{ color: "#888888" }}>
-                Live data from the North Adams Assessor — ownership, assessed values, sale history, and building details.
-              </p>
-              <div className="mt-6 grid grid-cols-3 gap-4 max-w-sm mx-auto">
-                {[["5.5K+","Properties"],["Annual","Updates"],["Owner","Names Included"]].map(([val,label]) => (
-                  <div key={label}>
-                    <p className="font-bold text-lg" style={{ color: "#000000" }}>{val}</p>
-                    <p className="text-xs" style={{ color: "#888888" }}>{label}</p>
-                  </div>
-                ))}
+          <p className="font-semibold mb-1" style={{ color: "#111111" }}>Search North Adams properties</p>
+          <p className="text-sm max-w-sm mx-auto" style={{ color: "#888888" }}>
+            Search by street name, address, or owner — or search &ldquo;North Adams&rdquo; to browse all 5,400+ properties.
+          </p>
+          <div className="mt-6 grid grid-cols-3 gap-4 max-w-sm mx-auto">
+            {[
+              ["5,400+", "Properties"],
+              ["Absentee", "Filter Included"],
+              ["Mailing", "Address Data"],
+            ].map(([val, label]) => (
+              <div key={label}>
+                <p className="font-bold text-lg" style={{ color: "#000000" }}>{val}</p>
+                <p className="text-xs" style={{ color: "#888888" }}>{label}</p>
               </div>
-            </>
-          ) : (
-            <>
-              <p className="font-semibold mb-1" style={{ color: "#111111" }}>Search Pittsburgh properties</p>
-              <p className="text-sm max-w-xs mx-auto" style={{ color: "#888888" }}>
-                Live data from Allegheny County — ownership, assessed values, sale history, and building details.
-              </p>
-              <div className="mt-6 grid grid-cols-3 gap-4 max-w-sm mx-auto">
-                {[["140K+","Properties"],["Daily","Updates"],["Free","No API key"]].map(([val,label]) => (
-                  <div key={label}>
-                    <p className="font-bold text-lg" style={{ color: "#000000" }}>{val}</p>
-                    <p className="text-xs" style={{ color: "#888888" }}>{label}</p>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+            ))}
+          </div>
         </div>
       )}
 
