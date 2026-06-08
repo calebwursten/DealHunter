@@ -32,7 +32,7 @@ function normalizeStreetName(raw: string): string {
 // Strip city/state/zip noise so "North Adams, MA 01247" → "" (all-properties query)
 function stripTownContext(raw: string): string {
   return raw
-    .replace(/north\s+adams/gi, "")
+    .replace(/,?\s*north\s+adams/gi, "")
     .replace(/,?\s*ma\b/gi,    "")
     .replace(/\b01247\b/g,     "")
     .replace(/\s+/g, " ")
